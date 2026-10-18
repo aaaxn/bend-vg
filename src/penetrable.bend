@@ -5,6 +5,20 @@
 import Base
 import ./graph.bend as G
 
+# The points, in a list of their own: the parallel ranges share it, and Bend
+# seals the fields of every node it builds of a type that is shared anywhere
+# in the program, which would slow the divide and conquer's G.Pts.
+type Pts is Data:
+  PNil{}
+  PCon{i: U32, x: F32, y: F32, next: Pts}
+
+def own(pts: G.Pts) -> Pts:
+  match pts:
+    case G.PNil{}:
+      PNil{}
+    case G.PCon{i, x, y, next}:
+      PCon{i, x, y, own(next)}
+
 # The `limit + 1` largest slopes (or heights) a sweep has accepted, as ts2vg's
 # max_slopes; the sweep accepts a point above the smallest of them.
 type Tops is Data:
@@ -112,10 +126,10 @@ def is_count(k: G.Weight) -> Bool:
     case _:
       False{}
 
-def natural_add(seen: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ia: U32, ib: U32, +xa: F32, xb: F32, +ya: F32, +yb: F32, +s: F32, +t: F32, ts: Tops, es: G.Edges) -> G.Edges:
+def natural_add(seen: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ia: U32, ib: U32, +xa: F32, +xb: F32, +ya: F32, +yb: F32, +s: F32, +scale_a: F32, ts: Tops, es: G.Edges) -> G.Edges:
   match seen:
     case True{}:
-      +known = G.pick(is_count(k), blocked_natural(ts, s, t, 0.0), G.nan())
+      +known = G.pick(is_count(k), blocked_natural(ts, s, G.tol(scale_a, xb, yb), 0.0), G.nan())
       add_oriented(is_down(dir, ya, yb), k, lo, hi, ia, ib, xa, xb, ya, yb, s, known, es)
     case False{}:
       es
@@ -129,27 +143,26 @@ def horizontal_add(seen: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F
       es
 
 # The sweep of point a over the points right of it: ts2vg's inner loop.
-def natural_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, pts: G.Pts, +ts: Tops, low: Low, es: G.Edges) -> G.Edges:
+def natural_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, pts: Pts, +ts: Tops, low: Low, es: G.Edges) -> G.Edges:
   match pts:
-    case G.PNil{}:
+    case PNil{}:
       es
-    case G.PCon{ib, +xb, +yb, next}:
+    case PCon{ib, +xb, +yb, next}:
       Low{+lk, +lv} = low
       +s = F32.div(F32.sub(yb, ya), F32.sub(xb, xa))
-      +t = G.tol(xa, xb, ya, yb)
-      +seen = G.greater(s, lv, t)
+      +seen = G.clears(F32.is_gt(s, lv), s, lv, scale_a, xb, yb)
       +after = accept(seen, lk, ts, s)
-      natural_sweep(dir, k, lo, hi, ia, xa, ya, next, after, relow(seen, after, Low{lk, lv}), natural_add(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, s, t, ts, es))
+      natural_sweep(dir, k, lo, hi, ia, xa, ya, scale_a, next, after, relow(seen, after, Low{lk, lv}), natural_add(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, s, scale_a, ts, es))
 
 # The horizontal sweep stops once the smallest top is above a: no later
 # point can be seen.
-def horizontal_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, pts: G.Pts, stop: Bool, +ts: Tops, low: Low, es: G.Edges) -> G.Edges:
+def horizontal_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, pts: Pts, stop: Bool, +ts: Tops, low: Low, es: G.Edges) -> G.Edges:
   match pts stop:
     case _ True{}:
       es
-    case G.PNil{} False{}:
+    case PNil{} False{}:
       es
-    case G.PCon{ib, xb, +yb, next} False{}:
+    case PCon{ib, xb, +yb, next} False{}:
       Low{+lk, +lv} = low
       +seen = F32.is_gt(ya, lv) && F32.is_gt(yb, lv)
       +after = accept(seen, lk, ts, yb)
@@ -157,25 +170,25 @@ def horizontal_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U
       horizontal_sweep(dir, k, lo, hi, ia, xa, ya, next, seen && F32.is_gt(Low.v(now), ya), after, now, horizontal_add(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, ts, es))
 
 
-def sweep(g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat, ia: U32, xa: F32, ya: F32, pts: G.Pts, es: G.Edges) -> G.Edges:
+def sweep(g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat, ia: U32, +xa: F32, +ya: F32, pts: Pts, es: G.Edges) -> G.Edges:
   match g:
     case G.Natural{}:
-      natural_sweep(dir, k, lo, hi, ia, xa, ya, pts, tops_new(limit), Low{0n, G.neg_inf()}, es)
+      natural_sweep(dir, k, lo, hi, ia, xa, ya, G.scale(xa, ya), pts, tops_new(limit), Low{0n, G.neg_inf()}, es)
     case G.Horizontal{}:
       horizontal_sweep(dir, k, lo, hi, ia, xa, ya, pts, False{}, tops_new(limit), Low{0n, G.neg_inf()}, es)
 
 # The sweeps of the first `count` points of `pts`, one rope each: ts2vg's
 # outer loop.
-def sweeps(pts: G.Pts, count: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat) -> G.Edges:
+def sweeps(pts: Pts, count: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat) -> G.Edges:
   match pts count:
-    case G.PCon{i, x, y, +next} 1n+c:
+    case PCon{i, x, y, +next} 1n+c:
       G.EJoin{sweep(g, dir, k, lo, hi, limit, i, x, y, next, G.ENil{}), sweeps(next, c, g, dir, k, lo, hi, limit)}
     case _ _:
       G.ENil{}
 
-def drop(n: Nat, pts: G.Pts) -> G.Pts:
+def drop(n: Nat, pts: Pts) -> Pts:
   match n pts:
-    case 1n+p G.PCon{i, x, y, next}:
+    case 1n+p PCon{i, x, y, next}:
       drop(p, next)
     case _ _:
       pts
@@ -196,7 +209,7 @@ def first_half(g: G.Graph, +len: U32, +count: U32) -> U32:
 # The sweeps of the first `count` points of `pts`, as two halves of equal
 # work in parallel, `depth` times over. `len` and `cu` are `pts`'s length
 # and `count` as U32; they only place the cut.
-def split(depth: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat, +pts: G.Pts, +len: U32, +cu: U32, +count: Nat) -> G.Edges:
+def split(depth: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat, +pts: Pts, +len: U32, +cu: U32, +count: Nat) -> G.Edges:
   match depth:
     case 0n:
       sweeps(pts, count, g, dir, k, lo, hi, limit)
@@ -208,4 +221,4 @@ def split(depth: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +h
 
 # The limited penetrable graph of `n` points, crossing at most `limit`.
 def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, pts: G.Pts, +n: U32) -> G.Edges:
-  split(7n, g, dir, k, lo, hi, U32.to_nat(limit), pts, n, n, U32.to_nat(n))
+  split(7n, g, dir, k, lo, hi, U32.to_nat(limit), own(pts), n, n, U32.to_nat(n))

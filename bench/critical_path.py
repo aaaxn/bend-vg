@@ -6,9 +6,11 @@ An interval of L points costs L: its argmax and its two sweeps each walk
 it once. The sweeps are scans whose running maximum moves only by more
 than the tolerance, which is not associative, so an interval runs on one
 core. The work is the sum over all intervals; the critical path is the
-heaviest chain from the whole series down to one point. `even` splits the
-cores evenly at every fork, as Bend's scheduler does; `ideal` is the best
-any scheduler can do, work / max(work / P, critical path).
+heaviest chain from the whole series down to one point. The model runs an
+interval's sweeps before its children start, as bend-vg does. `even` splits
+the cores evenly at every fork, as Bend's scheduler does; `ideal` is the
+best any scheduler can do under the model, work / max(work / P, critical
+path).
 """
 
 import sys

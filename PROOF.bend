@@ -13,24 +13,54 @@ def Laws.take_rev_cuts(pre, i, x, y, post, acc):
     case G.PCon{j, xj, yj, next}:
       Laws.take_rev_cuts(next, i, x, y, post, G.PCon{j, xj, yj, acc})
 
-# Each step conses the point it walked onto `fwd`, as rev_onto does; the
-# hypothesis holds for every best slope and edge list the step passes on.
-def Laws.natural_left_keeps(dir, k, lo, hi, ia, xa, ya, rev, best, es, fwd):
-  match rev:
+def append_assoc(a: G.Pts, +b: G.Pts, +c: G.Pts) -> {Laws.append(Laws.append(a, b), c) == Laws.append(a, Laws.append(b, c)) : G.Pts}:
+  match a:
     case G.PNil{}:
       {==}
-    case G.PCon{+ib, +xb, +yb, next}:
-      +s = F32.div(F32.sub(yb, ya), F32.neg(F32.sub(xb, xa)))
-      +seen = G.greater(s, best, G.tol(xa, xb, ya, yb))
-      Laws.natural_left_keeps(dir, k, lo, hi, ia, xa, ya, next, G.pick(seen, s, best), G.add_left(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, F32.neg(s), es), G.PCon{ib, xb, yb, fwd})
+    case G.PCon{+i, +x, +y, next}:
+      %append_assoc(next, b, c) : {G.PCon{i, x, y, Laws.append(Laws.append(next, b), c)} == G.PCon{i, x, y, _} : G.Pts}
+      {==}
 
-def Laws.horizontal_left_keeps(dir, k, lo, hi, ia, xa, ya, rev, best, es, fwd):
-  match rev:
+def rev_rev(a: G.Pts, +acc: G.Pts) -> {Laws.rev_onto(Laws.rev_onto(a, acc), G.PNil{}) == Laws.rev_onto(acc, a) : G.Pts}:
+  match a:
     case G.PNil{}:
       {==}
-    case G.PCon{+ib, +xb, +yb, next}:
-      +seen = F32.is_gt(yb, best)
-      Laws.horizontal_left_keeps(dir, k, lo, hi, ia, xa, ya, next, G.pick(seen, yb, best), G.add_left(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, G.nan(), es), G.PCon{ib, xb, yb, fwd})
+    case G.PCon{i, x, y, next}:
+      rev_rev(next, G.PCon{i, x, y, acc})
+
+def rev_append(a: G.Pts, +b: G.Pts, +acc: G.Pts) -> {Laws.rev_onto(Laws.append(a, b), acc) == Laws.rev_onto(b, Laws.rev_onto(a, acc)) : G.Pts}:
+  match a:
+    case G.PNil{}:
+      {==}
+    case G.PCon{i, x, y, next}:
+      rev_append(next, b, G.PCon{i, x, y, acc})
+
+def rev_onto_append(l: G.Pts, +m: G.Pts, +acc: G.Pts) -> {Laws.append(Laws.rev_onto(l, m), acc) == Laws.rev_onto(l, Laws.append(m, acc)) : G.Pts}:
+  match l:
+    case G.PNil{}:
+      {==}
+    case G.PCon{i, x, y, next}:
+      rev_onto_append(next, G.PCon{i, x, y, m}, acc)
+
+# take_rev_cuts gives the cut. Walking rightward, the left side is `pre`
+# reversed, so it reverses back to `pre`. Walking leftward, the left side is
+# `post` and the right side is `pre` reversed, and the interval reversed is
+# `post` reversed, the pivot, then `pre` reversed.
+def Laws.sides_keep(walk, pre, i, x, y, post):
+  match walk:
+    case G.Rightward{}:
+      +r = Laws.rev_onto(pre, G.PNil{})
+      cuts = Equal.sym(G.Pts & G.Pts, G.take_rev(Laws.length(pre), Laws.append(pre, G.PCon{i, x, y, post}), G.PNil{}), (r, post), Laws.take_rev_cuts(pre, i, x, y, post, G.PNil{}))
+      %cuts : {Laws.joined(G.sides(G.Rightward{}, _), i, x, y) == Laws.append(pre, G.PCon{i, x, y, post}) : G.Pts}
+      %rev_rev(pre, G.PNil{}) : {Laws.append(Laws.rev_onto(r, G.PNil{}), G.PCon{i, x, y, post}) == Laws.append(_, G.PCon{i, x, y, post}) : G.Pts}
+      {==}
+    case G.Leftward{}:
+      +r = Laws.rev_onto(pre, G.PNil{})
+      cuts = Equal.sym(G.Pts & G.Pts, G.take_rev(Laws.length(pre), Laws.append(pre, G.PCon{i, x, y, post}), G.PNil{}), (r, post), Laws.take_rev_cuts(pre, i, x, y, post, G.PNil{}))
+      +whole = Laws.append(pre, G.PCon{i, x, y, post})
+      %cuts : {Laws.joined(G.sides(G.Leftward{}, _), i, x, y) == Laws.rev_onto(whole, G.PNil{}) : G.Pts}
+      %Equal.sym(G.Pts, Laws.rev_onto(whole, G.PNil{}), Laws.rev_onto(post, G.PCon{i, x, y, r}), rev_append(pre, G.PCon{i, x, y, post}, G.PNil{})) : {Laws.append(Laws.rev_onto(post, G.PNil{}), G.PCon{i, x, y, r}) == _ : G.Pts}
+      rev_onto_append(post, G.PNil{}, G.PCon{i, x, y, r})
 
 def cat_assoc(a: G.Edges, +b: G.Edges, +c: G.Edges) -> {Laws.cat(Laws.cat(a, b), c) == Laws.cat(a, Laws.cat(b, c)) : G.Edges}:
   match a:
@@ -47,13 +77,13 @@ def cat_assoc(a: G.Edges, +b: G.Edges, +c: G.Edges) -> {Laws.cat(Laws.cat(a, b),
 # rest, and cat_assoc regroups the first start's rope.
 def Laws.sweeps_split(pts, c1, c2, g, dir, k, lo, hi, limit):
   match pts c1:
-    case G.PNil{} 0n:
+    case P.PNil{} 0n:
       {==}
-    case G.PNil{} 1n+c:
+    case P.PNil{} 1n+c:
       {==}
-    case G.PCon{i, x, y, next} 0n:
+    case P.PCon{i, x, y, next} 0n:
       {==}
-    case G.PCon{+i, +x, +y, +next} 1n+c:
+    case P.PCon{+i, +x, +y, +next} 1n+c:
       +first = Laws.normal(P.sweep(g, dir, k, lo, hi, limit, i, x, y, next, G.ENil{}))
       +a = Laws.normal(P.sweeps(next, c, g, dir, k, lo, hi, limit))
       +b = Laws.normal(P.sweeps(P.drop(c, next), c2, g, dir, k, lo, hi, limit))

@@ -61,6 +61,16 @@ def weight(kind, x_a, x_b, y_a, y_b, slope):
     raise ValueError(kind)
 
 
+def _argmax(ts, left, right):
+    """ts2vg's _argmax: a scan that takes a value above the best so far. Unlike
+    np.argmax, it lets NaN win only as the first value."""
+    best = left
+    for i in range(left + 1, right):
+        if ts[i] > ts[best]:
+            best = i
+    return best
+
+
 def _tol(x_a, x_b, y_a, y_b):
     return max(ABS_TOL, REL_TOL * max(abs(x_a), abs(x_b), abs(y_a), abs(y_b)))
 
@@ -85,7 +95,7 @@ def build(ts, kind="natural", directed=None, weighted=None, min_weight=-np.inf, 
             left, right = queue.pop(0)
             if left + 1 >= right:
                 continue
-            i = left + int(np.argmax(ts[left:right]))
+            i = _argmax(ts, left, right)
             x_a, y_a = xs[i], ts[i]
             best = F(-np.inf)
             for d in range(1, i - left + 1):

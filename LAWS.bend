@@ -1,6 +1,6 @@
 # The rules bend-vg keeps. F32 arithmetic is opaque to the checker, so the
 # laws state what holds for every F32 word: how the divide and conquer cuts
-# an interval around its pivot, and how the penetrable graphs split their
+# an interval into the two sides of its pivot, and how the penetrable graphs split their
 # sweeps among threads.
 import Base
 import ./src/graph.bend as G
@@ -28,10 +28,6 @@ def rev_onto(rev: G.Pts, fwd: G.Pts) -> G.Pts:
     case G.PCon{i, x, y, next}:
       rev_onto(next, G.PCon{i, x, y, fwd})
 
-def kept(r: G.Edges & G.Pts) -> G.Pts:
-  (es, pts) = r
-  pts
-
 # LAW: cutting an interval at the position of its pivot gives the points
 # before the pivot, nearest first, and the points after it, in order
 law take_rev_cuts:
@@ -43,36 +39,29 @@ law take_rev_cuts:
   for +acc  : G.Pts
   {G.take_rev(length(pre), append(pre, G.PCon{i, x, y, post}), acc) == (rev_onto(pre, acc), post) : G.Pts & G.Pts}
 
-# LAW: a natural left sweep hands back the points it walked, in their order,
-# whatever edges it adds
-law natural_left_keeps:
-  for +dir  : G.Direction
-  for +k    : G.Weight
-  for +lo   : F32
-  for +hi   : F32
-  for +ia   : U32
-  for +xa   : F32
-  for +ya   : F32
-  for +rev  : G.Pts
-  for +best : F32
-  for +es   : G.Edges
-  for +fwd  : G.Pts
-  {kept(G.natural_left(dir, k, lo, hi, ia, xa, ya, rev, best, es, fwd)) == rev_onto(rev, fwd) : G.Pts}
+# The points of an interval walked in `walk`, in index order.
+def in_order(walk: G.Walk, pts: G.Pts) -> G.Pts:
+  match walk:
+    case G.Rightward{}:
+      pts
+    case G.Leftward{}:
+      rev_onto(pts, G.PNil{})
 
-# LAW: so does a horizontal left sweep
-law horizontal_left_keeps:
-  for +dir  : G.Direction
-  for +k    : G.Weight
-  for +lo   : F32
-  for +hi   : F32
-  for +ia   : U32
-  for +xa   : F32
-  for +ya   : F32
-  for +rev  : G.Pts
-  for +best : F32
-  for +es   : G.Edges
-  for +fwd  : G.Pts
-  {kept(G.horizontal_left(dir, k, lo, hi, ia, xa, ya, rev, best, es, fwd)) == rev_onto(rev, fwd) : G.Pts}
+# The left side in index order, the pivot, then the right side.
+def joined(s: G.Sides, i: U32, x: F32, y: F32) -> G.Pts:
+  G.Sides{left, right} = s
+  append(rev_onto(left, G.PNil{}), G.PCon{i, x, y, right})
+
+# LAW: the two sides of an interval cut at its pivot, with the pivot between
+# them, are the interval's points in index order, whichever way it is walked
+law sides_keep:
+  for +walk  : G.Walk
+  for +pre  : G.Pts
+  for +i    : U32
+  for +x    : F32
+  for +y    : F32
+  for +post : G.Pts
+  {joined(G.sides(walk, G.take_rev(length(pre), append(pre, G.PCon{i, x, y, post}), G.PNil{})), i, x, y) == in_order(walk, append(pre, G.PCon{i, x, y, post})) : G.Pts}
 
 # A rope's edges in order, as a chain of ECon.
 def cat(a: G.Edges, b: G.Edges) -> G.Edges:
@@ -96,7 +85,7 @@ def normal(es: G.Edges) -> G.Edges:
 # LAW: the sweeps of two consecutive ranges of start points give the edges
 # of the sweeps of both ranges at once, in the same order
 law sweeps_split:
-  for +pts   : G.Pts
+  for +pts   : P.Pts
   for +c1    : Nat
   for +c2    : Nat
   for +g     : G.Graph
@@ -117,7 +106,7 @@ law split_sweeps:
   for +lo    : F32
   for +hi    : F32
   for +limit : Nat
-  for +pts   : G.Pts
+  for +pts   : P.Pts
   for +len   : U32
   for +cu    : U32
   for +count : Nat

@@ -40,14 +40,20 @@ takes the points and returns the edges, with ts2vg's `min_weight` and
 - Rounding a float64 series to F32 can tie values that differ in float64.
   For a series with a large offset, such as `1000 + 0.01 * noise`, subtract
   the offset before writing the file: neither graph changes under a shift.
+- F32 overflows above about 3.4e38. A weight that overflows, such as the
+  distance between values near 1e20, is infinite, and the default upper
+  bound on weights then drops its edge, which ts2vg keeps.
 - Edges come out in another order, and `-o` prints no summary.
 
 ## Speed
 
 [docs/benchmark.md](docs/benchmark.md) times bend-vg against ts2vg. On one
-thread bend-vg is 4 to 14 times slower than ts2vg's Cython kernel, and the
-divide and conquer gives more threads little to do: at most 5.4 times on
-white noise and 1.6 on a random walk, on any number of cores.
+thread, bend-vg beats ts2vg's Cython kernel on the natural graph of a
+random walk of 1,000,000 points, and takes up to 6 times as long on the
+horizontal graphs. The divide and conquer gives more threads little to do:
+1.4 times from 1 to 64 threads at 1,000,000 points. The limited
+penetrable natural graph splits well: at 50,000 points, 64 threads build
+it 7 times faster than ts2vg.
 
 ## Check it
 

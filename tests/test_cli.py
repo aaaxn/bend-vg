@@ -31,6 +31,8 @@ def _series():
         "sample": [3.0, 4.0, 2.0, 1.0],
         "sample_2": [0.25, 0.10, 1.50, -0.10, -0.30, 0.0, 0.20, 1.20, 1.85, -0.35],
         "flat": [1.0, 1.0, 1.0, 1.0],
+        "nans": [np.nan, 2.0, np.nan, 1.0, 3.0, np.nan, 3.0, 0.5, np.nan],
+        "noise_nans": np.where(np.arange(300) % 7 == 3, np.nan, np.random.default_rng(1).standard_normal(300)),
         "white_noise": np.random.default_rng(0).standard_normal(1000),
         "brownian": np.cumsum(np.random.default_rng(0).standard_normal(1000)),
         "linear_small": [9999 + k / 10 for k in range(11)],
@@ -79,6 +81,8 @@ def run(lane, path, *args):
 
 
 def bits(w):
+    if np.isnan(np.float32(w)):
+        return "nan"
     return int(np.array([np.float32(w)]).view(np.uint32)[0])
 
 
