@@ -41,6 +41,13 @@ edges, with ts2vg's `min_weight` and `max_weight` as its `lo` and `hi`.
 - `-p` (`penetrable_limit`) above 0 is not supported yet, and `-o` prints
   no summary.
 
+## Speed
+
+[docs/benchmark.md](docs/benchmark.md) times bend-vg against ts2vg. On one
+thread bend-vg is 4 to 14 times slower than ts2vg's Cython kernel, and the
+divide and conquer gives more threads little to do: at most 5.4 times on
+white noise and 1.6 on a random walk, on any number of cores.
+
 ## Check it
 
 ```sh
