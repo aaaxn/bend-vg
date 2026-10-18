@@ -119,3 +119,49 @@ def build(ts, kind="natural", directed=None, weighted=None, min_weight=-np.inf, 
             queue.append((left, i))
             queue.append((i + 1, right))
     return edges
+
+
+def build_penetrable(ts, kind="natural", directed=None, weighted=None, limit=1, min_weight=-np.inf, max_weight=np.inf):
+    """Edges (src, dst, w) of the limited penetrable graph, as ts2vg's
+    _natural_penetrable and _horizontal_penetrable build them."""
+    ts = np.asarray(ts, dtype=F)
+    n = len(ts)
+    xs = np.arange(n, dtype=F)
+    lo, hi = F(min_weight), F(max_weight)
+    edges = []
+
+    def add_edge(i1, i2, x1, x2, y1, y2, slope, known):
+        w = weight(weighted, x1, x2, y1, y2, slope) if np.isnan(known) else known
+        if w <= lo or w >= hi:
+            return
+        edges.append((i1, i2, w))
+
+    with np.errstate(all="ignore"):
+        for i_a in range(n - 1):
+            x_a, y_a = xs[i_a], ts[i_a]
+            tops = [F(-np.inf)] * (limit + 1)
+            low = 0
+            for i_b in range(i_a + 1, n):
+                x_b, y_b = xs[i_b], ts[i_b]
+                if kind == "natural":
+                    slope = (y_b - y_a) / (x_b - x_a)
+                    tol = _tol(x_a, x_b, y_a, y_b)
+                    seen = (slope - tops[low]) > tol
+                    count = F(sum(1 for v in tops if not (slope - v) > tol))
+                    passed, key = slope, slope
+                else:
+                    seen = y_a > tops[low] and y_b > tops[low]
+                    count = F(sum(1 for v in tops if y_a <= v or y_b <= v))
+                    passed, key = NAN, y_b
+                if not seen:
+                    continue
+                known = count if weighted == "num_penetrations" else NAN
+                if directed == "top_to_bottom" and y_b > y_a:
+                    add_edge(i_b, i_a, x_b, x_a, y_b, y_a, passed, known)
+                else:
+                    add_edge(i_a, i_b, x_a, x_b, y_a, y_b, passed, known)
+                tops[low] = key
+                low = int(np.argmin(tops))
+                if kind == "horizontal" and tops[low] > y_a:
+                    break
+    return edges

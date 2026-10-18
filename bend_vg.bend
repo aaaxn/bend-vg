@@ -4,6 +4,7 @@ import Base
 import ./src/graph.bend as G
 import ./src/series.bend as Series
 import ./src/report.bend as Report
+import ./src/penetrable.bend as Penetrable
 
 type Mode is Data:
   EdgeList{}
@@ -164,21 +165,26 @@ def only_degrees(mode: Mode) -> Bool:
     case _:
       True{}
 
-def report.built(penetrable: Bool, weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
-  match penetrable weighted_degrees:
-    case True{} _:
-      Err{"penetrable_limit > 0 is not supported yet"}
-    case False{} True{}:
+def graph_of(penetrable: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, pts: G.Pts, +n: U32) -> G.Edges:
+  match penetrable:
+    case True{}:
+      Penetrable.build(g, dir, k, G.neg_inf(), G.inf(), limit, pts, n)
+    case False{}:
+      G.build(g, dir, k, G.neg_inf(), G.inf(), pts, n)
+
+def report.built(weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
+  match weighted_degrees:
+    case True{}:
       Err{"Building with 'only_degrees' is only supported for unweighted graphs."}
-    case False{} False{}:
-      Ok{output(mode, k, G.build(g, dir, k, G.neg_inf(), G.inf(), Series.points(rev, (n - 1 : U32), G.PNil{}), n), n)}
+    case False{}:
+      Ok{output(mode, k, graph_of(Bool.not(U32.is_zero(limit)), g, dir, k, limit, Series.points(rev, (n - 1 : U32), G.PNil{}), n), n)}
 
 def report(p: Series.Parsed, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode) -> Outcome:
   match p:
     case Series.Bad{line}:
       Err{"line " ++ U32.show(line) ++ " holds no number"}
     case Series.Values{rev, +n}:
-      report.built(Bool.not(U32.is_zero(limit)), only_degrees(mode) && Report.is_weighted(k), g, dir, k, mode, rev, n)
+      report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, n)
 
 # Files
 

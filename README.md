@@ -2,9 +2,10 @@
 
 bend-vg builds the visibility graphs of [ts2vg](https://github.com/CarlosBergillos/ts2vg)
 1.2.4 in [Bend2](https://github.com/bendlang/bend): natural and horizontal,
-undirected or directed, with any of ts2vg's edge weights. It runs ts2vg's
-divide and conquer with the same operations in the same order, and builds
-the two sides of each split in parallel.
+undirected or directed, limited penetrable or not, with any of ts2vg's edge
+weights. It runs ts2vg's algorithms with the same operations in the same
+order. The divide and conquer builds the two sides of each split in
+parallel, and the penetrable graphs split their sweeps among threads.
 
 ## Use it
 
@@ -21,11 +22,13 @@ ts2vg's command line, with the input first:
 | `-t`, `--type` | `natural`, `horizontal` | `natural` |
 | `-d`, `--directed` | `left_to_right`, `top_to_bottom` | undirected |
 | `-w`, `--weighted` | `distance`, `sq_distance`, `v_distance`, `abs_v_distance`, `h_distance`, `abs_h_distance`, `slope`, `abs_slope`, `angle`, `abs_angle`, `num_penetrations` | unweighted |
+| `-p`, `--penetrable_limit` | how many points an edge may cross | 0 |
 | `-m`, `--outputmode` | `el` edge list, `ds` degree sequence, `dd` degree distribution, `dc` degree counts | `el` |
 | `-o`, `--output` | a file | standard output |
 
-`src/graph.bend` is the library: `build` takes the points and returns the
-edges, with ts2vg's `min_weight` and `max_weight` as its `lo` and `hi`.
+`src/graph.bend` and `src/penetrable.bend` are the library: their `build`
+takes the points and returns the edges, with ts2vg's `min_weight` and
+`max_weight` as its `lo` and `hi`.
 
 ## Where it differs from ts2vg
 
@@ -37,9 +40,7 @@ edges, with ts2vg's `min_weight` and `max_weight` as its `lo` and `hi`.
 - Rounding a float64 series to F32 can tie values that differ in float64.
   For a series with a large offset, such as `1000 + 0.01 * noise`, subtract
   the offset before writing the file: neither graph changes under a shift.
-- Edges come out in another order.
-- `-p` (`penetrable_limit`) above 0 is not supported yet, and `-o` prints
-  no summary.
+- Edges come out in another order, and `-o` prints no summary.
 
 ## Speed
 
@@ -57,7 +58,8 @@ uv run pytest -n auto
 ```
 
 `LAWS.bend` states how the divide and conquer cuts an interval around its
-pivot, and `PROOF.bend` proves it. The tests build `bend_vg` natively and as
+pivot, and that the parallel penetrable build gives the edges of one
+sequential pass; `PROOF.bend` proves both. The tests build `bend_vg` natively and as
 JavaScript, and compare both, bit for bit, with `tests/reference.py`, a
 float32 copy of ts2vg's kernels. They also compare the native build with
 ts2vg itself: the unweighted edges must be equal, and the weights within

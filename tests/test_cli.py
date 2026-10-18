@@ -162,3 +162,31 @@ def test_rejects_weighted_degrees(lanes, inputs):
     done = subprocess.run([*lanes["native"], str(inputs["sample"]), "-w", "distance", "-m", "ds"], capture_output=True, text=True)
     assert done.returncode == 1
     assert "only_degrees" in done.stderr
+
+
+PENETRABLE_WEIGHTS = [None, "distance", "slope", "angle", "num_penetrations"]
+PENETRABLE_SERIES = [s for s in SERIES if len(SERIES[s]) <= 500]
+
+
+@functools.cache
+def penetrable_edges(series, kind, directed, weighted, limit):
+    return reference.build_penetrable(SERIES[series], kind, directed, weighted, limit)
+
+
+@pytest.mark.parametrize(
+    ("series", "kind", "directed", "weighted", "limit"),
+    [(s, k, d, w, p) for s in PENETRABLE_SERIES for k in GRAPHS for d in DIRECTIONS for w in PENETRABLE_WEIGHTS for p in [1, 3]],
+)
+def test_penetrable_edges_match_reference(lanes, inputs, series, kind, directed, weighted, limit):
+    want = sorted((s, t, bits(w) if weighted else None) for s, t, w in penetrable_edges(series, kind, directed, weighted, limit))
+    for lane in ["native", "js"]:
+        got = parse_edges(run(lanes[lane], inputs[series], *options(kind, directed, weighted), "-p", str(limit)))
+        assert got == want, lane
+
+
+@pytest.mark.parametrize(("series", "kind", "limit"), [(s, k, p) for s in PENETRABLE_SERIES for k in GRAPHS for p in [1, 3]])
+def test_penetrable_edges_match_ts2vg(lanes, inputs, series, kind, limit):
+    g = GRAPHS[kind](penetrable_limit=limit, weighted="num_penetrations").build(SERIES[series].astype(np.float64))
+    text = run(lanes["native"], inputs[series], *options(kind, None, "num_penetrations"), "-p", str(limit))
+    got = sorted((int(s), int(t), float(w)) for s, t, w in (line.split() for line in text.splitlines()))
+    assert got == sorted((s, t, w) for s, t, w in g.edges)
