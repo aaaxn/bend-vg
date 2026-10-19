@@ -2,15 +2,16 @@
 # split.
 import Base
 import ./src/graph.bend as G
+import ./src/parallel.bend as Par
 import ./src/penetrable.bend as P
 import ./LAWS.bend as Laws
 
 # Each step moves a chunk onto acc, as rev_onto does.
 def Laws.halve_keeps(k, cs, na, total, acc):
   match k cs:
-    case 1n+q G.CCon{start, count, next}:
-      Laws.halve_keeps(q, next, na, total, G.CCon{start, count, acc})
-    case 1n+q G.CNil{}:
+    case 1n+q Par.CCon{start, count, next}:
+      Laws.halve_keeps(q, next, na, total, Par.CCon{start, count, acc})
+    case 1n+q Par.CNil{}:
       {==}
     case 0n _:
       {==}

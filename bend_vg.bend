@@ -2,6 +2,7 @@
 #   bend_vg INPUT [-o OUTPUT] [-t TYPE] [-d DIRECTED] [-w WEIGHTED] [-p LIMIT] [-m MODE]
 import Base
 import ./src/graph.bend as G
+import ./src/parallel.bend as Par
 import ./src/series.bend as Series
 import ./src/report.bend as Report
 import ./src/penetrable.bend as Penetrable
@@ -152,11 +153,11 @@ def output(mode: Mode, +k: G.Weight, es: G.Edges, +n: U32) -> String:
     case EdgeList{}:
       Report.edges_text(Report.is_weighted(k), es, "")
     case DegreeSequence{}:
-      Report.degree_sequence(es, n)
+      Report.degree_sequence(n, Par.degrees(es, Report.slots(n)))
     case DegreeDistribution{}:
-      Report.degree_counts(True{}, es, n)
+      Report.degree_counts(True{}, n, Par.degrees(es, Report.slots(n)))
     case DegreeCounts{}:
-      Report.degree_counts(False{}, es, n)
+      Report.degree_counts(False{}, n, Par.degrees(es, Report.slots(n)))
 
 def only_degrees(mode: Mode) -> Bool:
   match mode:
@@ -170,7 +171,7 @@ def graph_of(penetrable: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +li
     case True{}:
       Penetrable.build(g, dir, k, G.neg_inf(), G.inf(), limit, ys, n)
     case False{}:
-      G.build(g, dir, k, G.neg_inf(), G.inf(), ys, n)
+      Par.build(g, dir, k, G.neg_inf(), G.inf(), ys, n)
 
 def report.built(weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
   match weighted_degrees:
@@ -187,26 +188,6 @@ def report(p: Series.Parsed, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limi
       report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, n)
 
 # Files
-
-def read_text.done(m: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, r) = m
-  do IO<String>:
-    text : String <- IO.pass(String, r)
-    File.close(f)
-    return text
-
-def read_text.sized(m: File & Result<&1, &1, U32 & String, U32>) -> IO(String):
-  (f, r) = m
-  do IO<String>:
-    size : U32 <- IO.pass(U32, r)
-    got : File & Result<&1, &1, U32 & String, String> <- File.read(f, size)
-    read_text.done(got)
-
-def read_text(path: String) -> IO(String):
-  do IO<String>:
-    f : File <- IO.try(File, File.open(path, "r"))
-    sized : File & Result<&1, &1, U32 & String, U32> <- File.size(f)
-    read_text.sized(sized)
 
 def write_text.done(m: File & Result<&1, &1, U32 & String, Unit>) -> IO(Unit):
   (f, r) = m
@@ -240,7 +221,7 @@ def run(input: String, cfg: Config) -> IO(Unit):
       IO.die(Unit, 2, msg ++ "\n" ++ usage())
     case Config{+out, g, dir, k, limit, mode}:
       do IO<Unit>:
-        text : String <- read_text(input)
+        text : String <- Series.read_text(input)
         emit(out, report(Series.parse(text), g, dir, k, limit, mode))
 
 def start(args: List<String>) -> IO(Unit):

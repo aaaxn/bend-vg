@@ -3,17 +3,18 @@
 # among threads.
 import Base
 import ./src/graph.bend as G
+import ./src/parallel.bend as Par
 import ./src/penetrable.bend as P
 
-def rev_onto(a: G.Chunks, b: G.Chunks) -> G.Chunks:
+def rev_onto(a: Par.Chunks, b: Par.Chunks) -> Par.Chunks:
   match a:
-    case G.CNil{}:
+    case Par.CNil{}:
       b
-    case G.CCon{start, count, next}:
-      rev_onto(next, G.CCon{start, count, b})
+    case Par.CCon{start, count, next}:
+      rev_onto(next, Par.CCon{start, count, b})
 
-def rejoined(h: G.Halves) -> G.Chunks:
-  G.Halves{a, na, b, nb} = h
+def rejoined(h: Par.Halves) -> Par.Chunks:
+  Par.Halves{a, na, b, nb} = h
   rev_onto(a, b)
 
 # LAW: a level of the fork tree halves its chunks without losing or
@@ -21,11 +22,11 @@ def rejoined(h: G.Halves) -> G.Chunks:
 # the chunks it was given
 law halve_keeps:
   for +k     : Nat
-  for +cs    : G.Chunks
+  for +cs    : Par.Chunks
   for +na    : U32
   for +total : U32
-  for +acc   : G.Chunks
-  {rejoined(G.halve(k, cs, na, total, acc)) == rev_onto(acc, cs) : G.Chunks}
+  for +acc   : Par.Chunks
+  {rejoined(Par.halve(k, cs, na, total, acc)) == rev_onto(acc, cs) : Par.Chunks}
 
 # A rope's edges in order, as a chain of ECon.
 def cat(a: G.Edges, b: G.Edges) -> G.Edges:

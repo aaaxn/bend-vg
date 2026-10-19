@@ -51,7 +51,7 @@ SERIES = _series()
 
 
 @pytest.fixture(scope="session")
-def lanes(tmp_path_factory):
+def builds(tmp_path_factory):
     # One build for every xdist worker: the first to take the lock builds.
     out = tmp_path_factory.getbasetemp().parent / "build"
     out.mkdir(exist_ok=True)
@@ -59,10 +59,21 @@ def lanes(tmp_path_factory):
     with open(out / "lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not (out / "done").exists():
-            for target in ["bend_vg", "bend_vg.js"]:
-                subprocess.run([BEND, "bend_vg.bend", "-o", str(out / target)], cwd=ROOT, env=env, check=True)
+            for source, target in [("bend_vg.bend", "bend_vg"), ("tests/one_thread.bend", "one_thread")]:
+                for suffix in ["", ".js"]:
+                    subprocess.run([BEND, source, "-o", str(out / (target + suffix))], cwd=ROOT, env=env, check=True)
             (out / "done").touch()
-    return {"native": [str(out / "bend_vg")], "js": [BUN, str(out / "bend_vg.js")]}
+    return out
+
+
+@pytest.fixture(scope="session")
+def lanes(builds):
+    return {"native": [str(builds / "bend_vg")], "js": [BUN, str(builds / "bend_vg.js")]}
+
+
+@pytest.fixture(scope="session")
+def one_thread(builds):
+    return {"native": [str(builds / "one_thread")], "js": [BUN, str(builds / "one_thread.js")]}
 
 
 @pytest.fixture(scope="session")
@@ -197,6 +208,30 @@ def test_penetrable_edges_match_ts2vg(lanes, inputs, series, kind, limit):
     assert got == sorted((s, t, w) for s, t, w in g.edges)
 
 
+# The one-thread build, which a program can use without relying on @unsafe.
+
+
+def test_one_thread_checks_clean():
+    env = {**os.environ, "BEND_NO_TELEMETRY": "1"}
+    done = subprocess.run([BEND, "tests/one_thread.bend", "--check-only"], cwd=ROOT, env=env, capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "ALL PROOFS CHECK" in done.stdout
+
+
+@pytest.mark.parametrize(("series", "kind"), [(s, k) for s in SERIES for k in GRAPHS])
+def test_one_thread_edges_match_reference(one_thread, inputs, series, kind):
+    want = expected(series, kind, None, None)
+    for lane in ["native", "js"]:
+        assert parse_edges(run(one_thread[lane], inputs[series], kind)) == want, lane
+
+
+@pytest.mark.parametrize("kind", GRAPHS)
+def test_one_thread_penetrable_edges_match_reference(one_thread, inputs, kind):
+    want = sorted((s, t, None) for s, t, _ in penetrable_edges("noise_nans", kind, None, None, 3))
+    for lane in ["native", "js"]:
+        assert parse_edges(run(one_thread[lane], inputs["noise_nans"], kind, "3")) == want, lane
+
+
 # Long series: the JS lane's stack overflows on a recursion about as deep as
 # the series.
 
@@ -231,3 +266,10 @@ def test_js_lane_matches_native_on_long_series(lanes, long_inputs, series, args)
         assert js.split() == native.split()
     else:
         assert parse_edges(js) == parse_edges(native)
+
+
+@pytest.mark.parametrize(("series", "kind"), [(s, k) for s in LONG for k in GRAPHS])
+def test_one_thread_matches_parallel_on_long_series(lanes, one_thread, long_inputs, series, kind):
+    want = parse_edges(run(lanes["native"], long_inputs[series], "-t", kind))
+    for lane in ["native", "js"]:
+        assert parse_edges(run(one_thread[lane], long_inputs[series], kind)) == want, lane

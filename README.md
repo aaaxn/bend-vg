@@ -27,10 +27,15 @@ ts2vg's command line, with the input first:
 | `-m`, `--outputmode` | `el` edge list, `ds` degree sequence, `dd` degree distribution, `dc` degree counts | `el` |
 | `-o`, `--output` | a file | standard output |
 
-`src/graph.bend` and `src/penetrable.bend` are the library. Their `build`
-takes the values as an array, which `src/series.bend`'s `ys` makes, and
-returns the edges, with ts2vg's `min_weight` and `max_weight` as its `lo`
-and `hi`.
+`src/graph.bend`, `src/parallel.bend` and `src/penetrable.bend` are the
+library. Each `build` takes the values as an array, which
+`src/series.bend`'s `ys` makes, and returns the edges, with ts2vg's
+`min_weight` and `max_weight` as its `lo` and `hi`. `src/graph.bend`'s
+`build` runs on one thread. `src/parallel.bend`'s `build` gives the same
+edges on every thread, and its `degrees` counts the degrees there; the
+command line uses both. Only `src/parallel.bend` relies on Base's `@unsafe`
+`Array.fork`, so `bend --check-only` passes on a program that does not
+import it, such as `tests/one_thread.bend`.
 
 ## Where it differs from ts2vg
 
@@ -67,10 +72,11 @@ uv run pytest -n auto
 `LAWS.bend` states that each level of the fork tree halves its chunks
 without losing or repeating one, and that the parallel penetrable build
 gives the edges of one sequential pass. `PROOF.bend` proves both. It still
-prints SOME PROOFS FAIL, because the build relies on Base's `@unsafe`
-`Array.fork`. `AGENTS.md` names the defs. The tests build `bend_vg` natively and as
-JavaScript, and compare both, bit for bit, with `tests/reference.py`, a
-float32 copy of ts2vg's kernels. They also compare the native build with
-ts2vg itself: the unweighted edges must be equal, and the weights within
-1e-6 relative. On series of 100,000 values, they compare the JavaScript
-build with the native one.
+prints SOME PROOFS FAIL, because `src/parallel.bend` relies on Base's
+`@unsafe` `Array.fork`. `AGENTS.md` names the defs. The tests build
+`bend_vg` and `tests/one_thread.bend` natively and as JavaScript, and
+compare both, bit for bit, with `tests/reference.py`, a float32 copy of
+ts2vg's kernels. They also compare the native build with ts2vg itself: the
+unweighted edges must be equal, and the weights within 1e-6 relative. On
+series of 100,000 values, they compare the JavaScript build with the
+native one.

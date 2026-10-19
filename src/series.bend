@@ -58,3 +58,23 @@ def column(rev: List<&2, F32>, +i: U32, ys: Array<F32>) -> Array<F32>:
 # The `n` values `rev`, last first, as an array indexed from 0.
 def ys(rev: List<&2, F32>, +n: U32) -> Array<F32>:
   column(rev, (n - 1 : U32), Array.new(F32, Nat.add(1n, U32.log2(n)), 0.0))
+
+def read_text.done(m: File & Result<&1, &1, U32 & String, String>) -> IO(String):
+  (f, r) = m
+  do IO<String>:
+    text : String <- IO.pass(String, r)
+    File.close(f)
+    return text
+
+def read_text.sized(m: File & Result<&1, &1, U32 & String, U32>) -> IO(String):
+  (f, r) = m
+  do IO<String>:
+    size : U32 <- IO.pass(U32, r)
+    got : File & Result<&1, &1, U32 & String, String> <- File.read(f, size)
+    read_text.done(got)
+
+def read_text(path: String) -> IO(String):
+  do IO<String>:
+    f : File <- IO.try(File, File.open(path, "r"))
+    sized : File & Result<&1, &1, U32 & String, U32> <- File.size(f)
+    read_text.sized(sized)

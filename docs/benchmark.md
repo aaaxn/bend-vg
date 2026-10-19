@@ -63,7 +63,8 @@ the work counts the points that the sweeps visit. A fork tree of 512
 leaves runs the chunks. The blocks and the leaves share the arrays of y and
 of the counts through Base's `Array.fork`, and x is the index. Base marks
 `Array.fork` `@unsafe` because two handles can write the same cell. Here no
-two tasks write the same cell.
+two tasks write the same cell. `src/graph.bend`'s `build` runs the same
+code on one thread, as one block and one chunk, without `Array.fork`.
 
 On 64 threads, at 1,000,000 points of white noise, the blocks and the
 merge take 3 to 4 ms of the 22. Another 3 to 4 ms go to allocating the two
@@ -76,8 +77,8 @@ the tasks of defs that fork nothing over every thread. Work that a task
 does before it forks runs while the tree grows. A first version swept in
 the tree's last fork. It kept 8 of 64 threads busy, and its edges of the
 random walk of 1,000,000 points took 337 ms instead of 133. So `leaf` and
-`block_leaf` fork nothing, and `Report.degrees` walks the edges the same
-way, with atomic adds.
+`block_leaf` fork nothing, and `src/parallel.bend`'s `degrees` walks the
+edges the same way, with atomic adds.
 
 ## The limited penetrable graphs
 

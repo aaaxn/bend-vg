@@ -216,16 +216,6 @@ def flush(st: Stack, +n: U32, rights: Array<U32>, +visits: F32) -> Array<U32> & 
 type Cols is Type:
   Cols{ys: Array<F32>, lefts: Array<U32>, rights: Array<U32>}
 
-def fork3(a: Array<F32> & Array<F32>, b: Array<U32> & Array<U32>, c: Array<U32> & Array<U32>) -> Cols & Cols:
-  (a1, a2) = a
-  (b1, b2) = b
-  (c1, c2) = c
-  (Cols{a1, b1, c1}, Cols{a2, b2, c2})
-
-def fork_cols(c: Cols) -> Cols & Cols:
-  Cols{ys, lefts, rights} = c
-  fork3(Array.fork(F32, ys), Array.fork(U32, lefts), Array.fork(U32, rights))
-
 type Arrived is Type:
   OpensWithNaN{rights: Array<U32>, visits: F32}
   PopsAll{rights: Array<U32>, visits: F32}
@@ -258,12 +248,10 @@ type Unbounded is Data:
   UNil{}
   UCon{i: U32, y: F32, next: Unbounded}
 
+# A block of points runs the stack on its own points. Its points that pop
+# its whole stack, and the NaNs that open it, need the points before it.
 type Block is Data:
   Block{start: U32, opening_nans: U32, unbounded: Unbounded, st: Stack, visits: F32}
-
-type Blocks is Data:
-  BOne{b: Block}
-  BJoin{a: Blocks, b: Blocks}
 
 type Local is Type:
   Local{b: Block, c: Cols}
@@ -302,30 +290,6 @@ def block_pass(count: Nat, +s: U32, yr: Array<F32> & F32, lefts: Array<U32>, rig
     case 1n+c:
       (ys, +y) = yr
       local(c, s, y, arrive(KNil{}, is_nan(y), y, s, rights, 0.0), Array.get(F32, ys, (s + 1 : U32)), lefts, s, 0, UNil{})
-
-def block_of(l: Local) -> Blocks:
-  Local{b, c} = l
-  BOne{b}
-
-# It forks nothing, so the runtime runs it once the tree has grown, on any
-# idle thread; work done before a fork runs while the tree grows, on a few
-# threads.
-def block_leaf(+s: U32, +e: U32, c: Cols) -> Blocks:
-  Cols{ys, lefts, rights} = c
-  block_of(block_pass(U32.to_nat((e - s : U32)), s, Array.get(F32, ys, s), lefts, rights))
-
-def block_tree(depth: Nat, +s: U32, +e: U32, cc: Cols & Cols) -> Blocks:
-  match depth:
-    case 1n++d:
-      (c1, c2) = cc
-      +mid = (s + U32.shr((e - s : U32)) : U32)
-      x y = block_tree(d, s, mid, fork_cols(c1)) block_tree(d, mid, e, fork_cols(c2))
-      BJoin{x, y}
-    case 0n:
-      (c1, c2) = cc
-      +mid = (s + U32.shr((e - s : U32)) : U32)
-      x y = block_leaf(s, mid, c1) block_leaf(mid, e, c2)
-      BJoin{x, y}
 
 type Merged is Type:
   Merged{st: Stack, lefts: Array<U32>, rights: Array<U32>, visits: F32}
@@ -382,73 +346,13 @@ def push_block_stack(st: Stack, m: Merged) -> Merged:
   Merged{g, lefts, rights, visits} = m
   Merged{onto(onto(st, KNil{}), g), lefts, rights, visits}
 
+# The merge replays the stack over every point before the block. The points
+# the block's own stack could not bound pop it in order; the others sit on
+# the block's stack, which goes on top.
 def merge_block(b: Block, m: Merged) -> Merged:
   Block{+start, +opening_nans, unbounded, st, +visits} = b
   Merged{g, lefts, rights, +v} = m
   push_block_stack(st, bound_unbounded(in_order(unbounded, UNil{}), Merged{push_opening_nans(U32.to_nat(opening_nans), start, g), lefts, rights, F32.add(v, visits)}))
-
-# The merge replays the stack over every point before each block. The points
-# the block's own stack could not bound pop it in order; the others sit on
-# the block's stack, which goes on top.
-def merge(bs: Blocks, m: Merged) -> Merged:
-  match bs:
-    case BOne{b}:
-      merge_block(b, m)
-    case BJoin{a, b}:
-      merge(b, merge(a, m))
-
-type Chunks is Data:
-  CNil{}
-  CCon{start: U32, count: U32, next: Chunks}
-
-def close(full: Bool, +start: U32, +end: U32, cs: Chunks) -> Chunks:
-  match full:
-    case True{}:
-      CCon{start, (end - start : U32), cs}
-    case False{}:
-      cs
-
-type Cut is Type:
-  Cut{lefts: Array<U32>, rights: Array<U32>, cs: Chunks, m: U32}
-
-def cut(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, +start: U32, +acc: U32, +target: U32, cs: Chunks, +m: U32) -> Cut:
-  match count:
-    case 0n:
-      (lefts, l) = lr
-      (rights, r) = rr
-      +last = U32.is_lt(start, i)
-      Cut{lefts, rights, close(last, start, i, cs), pick_u32(last, (m + 1 : U32), m)}
-    case 1n+c:
-      (lefts, +l) = lr
-      (rights, +r) = rr
-      +w = (acc + l + r + 1 : U32)
-      +full = U32.is_ge(w, target)
-      +i2 = (i + 1 : U32)
-      cut(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), pick_u32(full, i2, start), pick_u32(full, 0, w), target, close(full, start, i2, cs), pick_u32(full, (m + 1 : U32), m))
-
-def fork_depth() -> Nat:
-  8n
-
-# At most 512 blocks, and at least 32 points in each unless n is below 64.
-def block_depth(+n: U32) -> Nat:
-  Nat.min(fork_depth(), U32.log2(U32.shrn(n, 6n)))
-
-# About two chunks for each of the tree's leaves.
-def target(+visits: F32) -> U32:
-  U32.max(1, F32.to_u32(F32.div(visits, U32.to_f32(U32.shln(4, fork_depth())))))
-
-type Halves is Data:
-  Halves{a: Chunks, na: U32, b: Chunks, nb: U32}
-
-def halve(k: Nat, cs: Chunks, +na: U32, +total: U32, acc: Chunks) -> Halves:
-  match k cs:
-    case 1n+q CCon{+start, +count, next}:
-      halve(q, next, na, total, CCon{start, count, acc})
-    case _ _:
-      Halves{acc, na, cs, (total - na : U32)}
-
-def halves(cs: Chunks, +m: U32) -> Halves:
-  halve(U32.to_nat(U32.shr(m)), cs, U32.shr(m), m, CNil{})
 
 # Bend matches only parameters, so a read's result must arrive as one: a
 # sweep reads y at `ahead`, where the next sweep starts, and hands it over.
@@ -539,52 +443,27 @@ def points(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, w: W
       +i2 = (i + 1 : U32)
       points(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), left_sweep(g, U32.to_nat(l), dir, k, lo, hi, i, x, y, right_sweep(g, U32.to_nat(r), Array.get(F32, ys, i2), k, lo, hi, i, x, y, es)), g, dir, k, lo, hi)
 
-def chunks(cs: Chunks, o: Out, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Out:
-  match cs:
-    case CCon{+start, count, next}:
-      Out{cols, es} = o
-      Cols{ys, lefts, rights} = cols
-      chunks(next, points(U32.to_nat(count), start, Array.get(U32, lefts, start), Array.get(U32, rights, start), Walked{Array.get(F32, ys, start), es}, g, dir, k, lo, hi), g, dir, k, lo, hi)
-    case CNil{}:
-      o
-
 def edges_of(o: Out) -> Edges:
   Out{cols, es} = o
   es
 
-def leaf(cs: Chunks, c: Cols, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Edges:
-  edges_of(chunks(cs, Out{c, ENil{}}, g, dir, k, lo, hi))
+def swept(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Edges:
+  (rights, visits) = r
+  edges_of(points(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), Walked{Array.get(F32, ys, 0), ENil{}}, g, dir, k, lo, hi))
 
-def tree(depth: Nat, h: Halves, cc: Cols & Cols, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Edges:
-  match depth h:
-    case 1n++d Halves{a, +na, b, +nb}:
-      (c1, c2) = cc
-      x y = tree(d, halves(a, na), fork_cols(c1), g, dir, k, lo, hi) tree(d, halves(b, nb), fork_cols(c2), g, dir, k, lo, hi)
-      EJoin{x, y}
-    case _ Halves{a, na, b, nb}:
-      (c1, c2) = cc
-      x y = leaf(a, c1, g, dir, k, lo, hi) leaf(b, c2, g, dir, k, lo, hi)
-      EJoin{x, y}
-
-def split(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, c: Cut) -> Edges:
-  Cut{lefts, rights, cs, +m} = c
-  tree(fork_depth(), halves(cs, m), fork_cols(Cols{ys, lefts, rights}), g, dir, k, lo, hi)
-
-def cut_all(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Edges:
-  (rights, +visits) = r
-  split(g, dir, k, lo, hi, ys, cut(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), 0, 0, target(visits), CNil{}, 0))
-
-def merged(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, m: Merged) -> Edges:
+def bounded(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, m: Merged) -> Edges:
   Merged{st, lefts, rights, +visits} = m
-  cut_all(g, dir, k, lo, hi, n, ys, lefts, flush(st, n, rights, visits))
+  swept(g, dir, k, lo, hi, n, ys, lefts, flush(st, n, rights, visits))
 
-def passed(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, cc: Cols & Cols) -> Edges:
-  (c1, c2) = cc
-  Cols{ys, lefts, rights} = c2
-  merged(g, dir, k, lo, hi, n, ys, merge(block_tree(block_depth(n), 0, n, fork_cols(c1)), Merged{KNil{}, lefts, rights, 0.0}))
+def stacked(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, l: Local) -> Edges:
+  Local{b, c} = l
+  Cols{ys, lefts, rights} = c
+  bounded(g, dir, k, lo, hi, n, ys, merge_block(b, Merged{KNil{}, lefts, rights, 0.0}))
 
-# The graph of the `n` values `ys`, each at its index. `lo` and `hi` bound
-# the weights, as ts2vg's min_weight and max_weight; pass neg_inf() and
-# inf() for no bound.
+# The graph of the `n` values `ys`, each at its index, on one thread, as one
+# block. `lo` and `hi` bound the weights, as ts2vg's min_weight and
+# max_weight; pass neg_inf() and inf() for no bound. x is the index as an
+# F32, exact for up to 2^24 values. src/parallel.bend builds the same graph
+# on every thread, and relies on Base's @unsafe Array.fork.
 def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, +n: U32) -> Edges:
-  passed(g, dir, k, lo, hi, n, fork_cols(Cols{ys, Array.new(U32, Nat.add(1n, U32.log2(n)), 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0)}))
+  stacked(g, dir, k, lo, hi, n, block_pass(U32.to_nat(n), 0, Array.get(F32, ys, 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0)))

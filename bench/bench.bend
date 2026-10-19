@@ -5,6 +5,7 @@
 # edge's ends and every degree, makes the run read the whole graph.
 import Base
 import ../src/graph.bend as G
+import ../src/parallel.bend as Par
 import ../src/penetrable.bend as P
 import ../src/series.bend as Series
 import ../src/report.bend as Report
@@ -78,12 +79,12 @@ def report(+n: U32, +t0: Nat, +t1: Nat, done: Tally & Nat) -> IO(Unit):
 def degrees_of(+n: U32, +t0: Nat, timed: Timed) -> IO(Unit):
   Timed{es, t, +t1} = timed
   do IO<Unit>:
-    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Report.degrees(es, Report.slots(n)), 0), 0)))
+    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Par.degrees(es, Report.slots(n)), 0), 0)))
     report(n, t0, t1, done)
 
 def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
   do IO<Unit>:
-    timed : Timed <- stamp_edges(es, tally_tree(G.fork_depth(), es))
+    timed : Timed <- stamp_edges(es, tally_tree(Par.fork_depth(), es))
     degrees_of(n, t0, timed)
 
 def graph(penetrable: Bool, +g: G.Graph, +limit: U32, ys: Array<F32>, +n: U32) -> G.Edges:
@@ -91,7 +92,7 @@ def graph(penetrable: Bool, +g: G.Graph, +limit: U32, ys: Array<F32>, +n: U32) -
     case True{}:
       P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, ys, n)
     case False{}:
-      G.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, n)
+      Par.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, n)
 
 def from_values(penetrable: Bool, +g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>) -> IO(Unit):
   do IO<Unit>:
@@ -112,26 +113,6 @@ def graph_of(horizontal: Bool) -> G.Graph:
     case False{}:
       G.Natural{}
 
-def read_text.done(m: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, r) = m
-  do IO<String>:
-    text : String <- IO.pass(String, r)
-    File.close(f)
-    return text
-
-def read_text.sized(m: File & Result<&1, &1, U32 & String, U32>) -> IO(String):
-  (f, r) = m
-  do IO<String>:
-    size : U32 <- IO.pass(U32, r)
-    got : File & Result<&1, &1, U32 & String, String> <- File.read(f, size)
-    read_text.done(got)
-
-def read_text(path: String) -> IO(String):
-  do IO<String>:
-    f : File <- IO.try(File, File.open(path, "r"))
-    sized : File & Result<&1, &1, U32 & String, U32> <- File.size(f)
-    read_text.sized(sized)
-
 def limit_of(found: Maybe<&2, U32>) -> U32:
   match found:
     case Some{l}:
@@ -143,11 +124,11 @@ def start(args: List<String>) -> IO(Unit):
   match args:
     case Con{prog, Con{input, Con{+kind, Nil{}}}}:
       do IO<Unit>:
-        text : String <- read_text(input)
+        text : String <- Series.read_text(input)
         timed(graph_of(String.eq(kind, "horizontal")), 0, Series.parse(text))
     case Con{prog, Con{input, Con{+kind, Con{limit, Nil{}}}}}:
       do IO<Unit>:
-        text : String <- read_text(input)
+        text : String <- Series.read_text(input)
         timed(graph_of(String.eq(kind, "horizontal")), limit_of(U32.read(limit)), Series.parse(text))
     case _:
       IO.die(Unit, 2, "usage: bench INPUT natural|horizontal [LIMIT]")

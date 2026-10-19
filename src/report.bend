@@ -52,33 +52,16 @@ def added(r: Array<U32> & U32) -> Array<U32>:
 def atomic_bump(d: Array<U32>, +i: U32) -> Array<U32>:
   added(Array.atomic.add(d, i, 1))
 
-def tally_degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
+# The degrees of the nodes of `es`, added into `d`; parallel.bend counts
+# them on every thread.
+def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
   match es:
     case G.ENil{}:
       d
     case G.ECon{s, t, w, next}:
-      tally_degrees(next, atomic_bump(atomic_bump(d, s), t))
+      degrees(next, atomic_bump(atomic_bump(d, s), t))
     case G.EJoin{a, b}:
-      tally_degrees(b, tally_degrees(a, d))
-
-# Forks down the build's tree of EJoin into tally_degrees, which forks
-# nothing, so the runtime spreads the tallies over every thread.
-def degrees_tree(depth: Nat, es: G.Edges, dd: Array<U32> & Array<U32>) -> Array<U32>:
-  match depth es:
-    case 1n++p G.EJoin{a, b}:
-      (d1, d2) = dd
-      x y = degrees_tree(p, a, Array.fork(U32, d1)) degrees_tree(p, b, Array.fork(U32, d2))
-      Array.join(U32, x, y)
-    case 0n G.EJoin{a, b}:
-      (d1, d2) = dd
-      x y = tally_degrees(a, d1) tally_degrees(b, d2)
-      Array.join(U32, x, y)
-    case _ _:
-      (d1, d2) = dd
-      tally_degrees(es, Array.join(U32, d1, d2))
-
-def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
-  degrees_tree(G.fork_depth(), es, Array.fork(U32, d))
+      degrees(b, degrees(a, d))
 
 # The degree sequence, one per line. `r` is the degree array with the
 # degree of node `i`; the `f` nodes below `i` are still to print.
@@ -98,11 +81,9 @@ def degree_sequence.from(empty: Bool, +n: U32, d: Array<U32>) -> String:
     case False{}:
       sequence_text(U32.to_nat((n - 1 : U32)), Array.get(U32, d, (n - 1 : U32)), (n - 1 : U32), "")
 
-def degree_sequence.go(+n: U32, d: Array<U32>) -> String:
+# The degree sequence of the `n` nodes whose degrees `d` holds.
+def degree_sequence(+n: U32, d: Array<U32>) -> String:
   degree_sequence.from(U32.is_zero(n), n, d)
-
-def degree_sequence(es: G.Edges, +n: U32) -> String:
-  degree_sequence.go(n, degrees(es, slots(n)))
 
 # How many nodes have each degree: `r` is the degree array with the degree
 # of node `i`; the `f` nodes above `i` are still to count.
@@ -150,5 +131,5 @@ def degree_counts.from(empty: Bool, +share: Bool, +n: U32, d: Array<U32>) -> Str
     case False{}:
       degree_counts.text(share, n, count_loop(U32.to_nat((n - 1 : U32)), Array.get(U32, d, 0), 0, slots(n)))
 
-def degree_counts(+share: Bool, es: G.Edges, +n: U32) -> String:
-  degree_counts.from(U32.is_zero(n), share, n, degrees(es, slots(n)))
+def degree_counts(+share: Bool, +n: U32, d: Array<U32>) -> String:
+  degree_counts.from(U32.is_zero(n), share, n, d)
