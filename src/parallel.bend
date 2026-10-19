@@ -106,50 +106,59 @@ def halve(k: Nat, cs: Chunks, +na: U32, +total: U32, acc: Chunks) -> Halves:
 def halves(cs: Chunks, +m: U32) -> Halves:
   halve(U32.to_nat(U32.shr(m)), cs, U32.shr(m), m, CNil{})
 
-def chunks(cs: Chunks, o: G.Out, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32) -> G.Out:
+def chunks(cs: Chunks, o: G.Out, +index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32) -> G.Out:
   match cs:
     case CCon{+start, count, next}:
-      G.Out{cols, es} = o
+      G.Out{cols, xs, es} = o
       G.Cols{ys, lefts, rights} = cols
-      chunks(next, G.points(U32.to_nat(count), start, Array.get(U32, lefts, start), Array.get(U32, rights, start), G.Walked{Array.get(F32, ys, start), es}, g, dir, k, lo, hi), g, dir, k, lo, hi)
+      chunks(next, G.points(U32.to_nat(count), start, Array.get(U32, lefts, start), Array.get(U32, rights, start), G.Walked{Array.get(F32, ys, start), Array.get(F32, xs, start), es}, index, g, dir, k, lo, hi), index, g, dir, k, lo, hi)
     case CNil{}:
       o
 
-def leaf(cs: Chunks, c: G.Cols, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32) -> G.Edges:
-  G.edges_of(chunks(cs, G.Out{c, G.ENil{}}, g, dir, k, lo, hi))
+def leaf(cs: Chunks, c: G.Cols, xs: Array<F32>, +index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32) -> G.Edges:
+  G.edges_of(chunks(cs, G.Out{c, xs, G.ENil{}}, index, g, dir, k, lo, hi))
 
-def tree(depth: Nat, h: Halves, cc: G.Cols & G.Cols, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32) -> G.Edges:
+def tree(depth: Nat, h: Halves, cc: G.Cols & G.Cols, xx: Array<F32> & Array<F32>, +index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32) -> G.Edges:
   match depth h:
     case 1n++d Halves{a, +na, b, +nb}:
       (c1, c2) = cc
-      x y = tree(d, halves(a, na), fork_cols(c1), g, dir, k, lo, hi) tree(d, halves(b, nb), fork_cols(c2), g, dir, k, lo, hi)
+      (x1, x2) = xx
+      x y = tree(d, halves(a, na), fork_cols(c1), Array.fork(F32, x1), index, g, dir, k, lo, hi) tree(d, halves(b, nb), fork_cols(c2), Array.fork(F32, x2), index, g, dir, k, lo, hi)
       G.EJoin{x, y}
     case _ Halves{a, na, b, nb}:
       (c1, c2) = cc
-      x y = leaf(a, c1, g, dir, k, lo, hi) leaf(b, c2, g, dir, k, lo, hi)
+      (x1, x2) = xx
+      x y = leaf(a, c1, x1, index, g, dir, k, lo, hi) leaf(b, c2, x2, index, g, dir, k, lo, hi)
       G.EJoin{x, y}
 
-def split(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, c: Cut) -> G.Edges:
+def split(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: Array<F32>, c: Cut) -> G.Edges:
   Cut{lefts, rights, cs, +m} = c
-  tree(fork_depth(), halves(cs, m), fork_cols(G.Cols{ys, lefts, rights}), g, dir, k, lo, hi)
+  tree(fork_depth(), halves(cs, m), fork_cols(G.Cols{ys, lefts, rights}), Array.fork(F32, xs), index, g, dir, k, lo, hi)
 
-def cut_all(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> G.Edges:
+def cut_all(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, xs: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> G.Edges:
   (rights, +visits) = r
-  split(g, dir, k, lo, hi, ys, cut(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), 0, 0, target(visits), CNil{}, 0))
+  split(index, g, dir, k, lo, hi, ys, xs, cut(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), 0, 0, target(visits), CNil{}, 0))
 
-def merged(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, m: G.Merged) -> G.Edges:
+def merged(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, xs: Array<F32>, m: G.Merged) -> G.Edges:
   G.Merged{st, lefts, rights, +visits} = m
-  cut_all(g, dir, k, lo, hi, n, ys, lefts, G.flush(st, n, rights, visits))
+  cut_all(index, g, dir, k, lo, hi, n, ys, xs, lefts, G.flush(st, n, rights, visits))
 
-def passed(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +n: U32, cc: G.Cols & G.Cols) -> G.Edges:
+def passed(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +n: U32, xs: Array<F32>, cc: G.Cols & G.Cols) -> G.Edges:
   (c1, c2) = cc
   G.Cols{ys, lefts, rights} = c2
-  merged(g, dir, k, lo, hi, n, ys, merge(block_tree(block_depth(n), 0, n, fork_cols(c1)), G.Merged{G.KNil{}, lefts, rights, 0.0}))
+  merged(index, g, dir, k, lo, hi, n, ys, xs, merge(block_tree(block_depth(n), 0, n, fork_cols(c1)), G.Merged{G.KNil{}, lefts, rights, 0.0}))
+
+def built(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: Array<F32>, +n: U32) -> G.Edges:
+  passed(index, g, dir, k, lo, hi, n, xs, fork_cols(G.Cols{ys, G.counts(n), G.counts(n)}))
 
 # G.build on every thread: the stack runs on blocks, then the sweeps on
 # chunks of equal work.
-def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, +n: U32) -> G.Edges:
-  passed(g, dir, k, lo, hi, n, fork_cols(G.Cols{ys, Array.new(U32, Nat.add(1n, U32.log2(n)), 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0)}))
+def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
+  match xs:
+    case G.Index{}:
+      built(True{}, g, dir, k, lo, hi, ys, G.no_xs(), n)
+    case G.At{a}:
+      built(False{}, g, dir, k, lo, hi, ys, a, n)
 
 # Forks down the build's tree of EJoin into Report.degrees, which
 # forks nothing, so the runtime spreads the tallies over every thread.

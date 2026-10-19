@@ -221,6 +221,75 @@ def test_penetrable_edges_match_ts2vg(lanes, inputs, series, kind, limit):
     assert got == sorted((s, t, w) for s, t, w in g.edges)
 
 
+# Irregular x coordinates, as ts2vg's build(ts, xs).
+
+XS_SERIES = ["sample_2", "flat", "nans", "noise_nans", "white_noise", "brownian", "small_ints", "sine_noise"]
+
+
+def _xs(kind, n):
+    rng = np.random.default_rng(len(kind) + n)
+    if kind == "gaps":
+        xs = np.cumsum(0.5 + rng.random(n))
+    elif kind == "spread":
+        xs = np.cumsum(0.05 + rng.exponential(3.0, n))
+    else:
+        xs = -500 + np.cumsum(0.25 + rng.random(n))
+    return xs.astype(np.float32)
+
+
+XS = {(s, k): _xs(k, len(SERIES[s])) for s in XS_SERIES for k in ["gaps", "spread", "negative"]}
+
+
+@pytest.fixture(scope="session")
+def xs_inputs(tmp_path_factory):
+    out = tmp_path_factory.mktemp("xs")
+    paths = {}
+    for (series, kind), xs in XS.items():
+        paths[series, kind] = out / f"{series}_{kind}.txt"
+        paths[series, kind].write_text("".join(np.format_float_positional(v, unique=True) + "\n" for v in xs))
+    return paths
+
+
+@pytest.mark.parametrize(
+    ("series", "xs", "kind", "directed", "weighted"),
+    [(s, x, k, d, w) for s, x in XS for k in GRAPHS for d in DIRECTIONS for w in [None, "distance", "h_distance", "slope", "angle"]],
+)
+def test_xs_edges_match_reference(lanes, inputs, xs_inputs, series, xs, kind, directed, weighted):
+    edges = reference.build(SERIES[series], kind, directed, weighted, xs=XS[series, xs])
+    want = sorted((s, t, bits(w) if weighted else None) for s, t, w in edges)
+    for lane in ["native", "js"]:
+        got = parse_edges(run(lanes[lane], inputs[series], "-x", xs_inputs[series, xs], *options(kind, directed, weighted)))
+        assert got == want, lane
+
+
+@pytest.mark.parametrize(("series", "xs", "kind"), [(s, x, k) for s, x in XS for k in GRAPHS])
+def test_xs_edges_match_ts2vg(lanes, inputs, xs_inputs, series, xs, kind):
+    g = GRAPHS[kind]().build(SERIES[series].astype(np.float64), xs=XS[series, xs].astype(np.float64))
+    got = parse_edges(run(lanes["native"], inputs[series], "-x", xs_inputs[series, xs], "-t", kind))
+    assert [(s, t) for s, t, _ in got] == sorted(map(tuple, g.edges))
+
+
+@pytest.mark.parametrize(
+    ("series", "xs", "kind", "weighted", "limit"),
+    [(s, x, k, w, p) for s, x in XS if len(SERIES[s]) <= 500 for k in GRAPHS for w in [None, "distance", "num_penetrations"] for p in [1, 3]],
+)
+def test_xs_penetrable_edges_match_reference(lanes, inputs, xs_inputs, series, xs, kind, weighted, limit):
+    edges = reference.build_penetrable(SERIES[series], kind, None, weighted, limit, xs=XS[series, xs])
+    want = sorted((s, t, bits(w) if weighted else None) for s, t, w in edges)
+    for lane in ["native", "js"]:
+        got = parse_edges(run(lanes[lane], inputs[series], "-x", xs_inputs[series, xs], *options(kind, None, weighted), "-p", str(limit)))
+        assert got == want, lane
+
+
+@pytest.mark.parametrize(("xs", "error"), [("1\n2\n3\n", "hold 3 values and the series 4"), ("1\n2\n2\n3\n", "must increase"), ("1\n3\n2\n4\n", "must increase"), ("1\n2\nx\n4\n", "line 3 of the x coordinates")])
+def test_xs_rejects_bad_coordinates(lanes, inputs, tmp_path, xs, error):
+    path = tmp_path / "xs.txt"
+    path.write_text(xs)
+    done = subprocess.run([*lanes["native"], str(inputs["sample"]), "-x", str(path)], capture_output=True, text=True)
+    assert done.returncode == 1
+    assert error in done.stderr
+
+
 # The one-thread build, which a program can use without relying on @unsafe.
 
 
@@ -243,6 +312,18 @@ def test_one_thread_penetrable_edges_match_reference(one_thread, inputs, kind):
     want = sorted((s, t, None) for s, t, _ in penetrable_edges("noise_nans", kind, None, None, 3))
     for lane in ["native", "js"]:
         assert parse_edges(run(one_thread[lane], inputs["noise_nans"], kind, "3")) == want, lane
+
+
+@pytest.mark.parametrize(("kind", "limit"), [(k, p) for k in GRAPHS for p in [0, 2]])
+def test_one_thread_xs_edges_match_reference(one_thread, inputs, xs_inputs, kind, limit):
+    xs = XS["noise_nans", "spread"]
+    if limit:
+        edges = reference.build_penetrable(SERIES["noise_nans"], kind, None, None, limit, xs=xs)
+    else:
+        edges = reference.build(SERIES["noise_nans"], kind, xs=xs)
+    want = sorted((s, t, None) for s, t, _ in edges)
+    for lane in ["native", "js"]:
+        assert parse_edges(run(one_thread[lane], inputs["noise_nans"], kind, str(limit), xs_inputs["noise_nans", "spread"])) == want, lane
 
 
 # Long series: the JS lane's stack overflows on a recursion about as deep as

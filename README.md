@@ -16,7 +16,8 @@ bend bend_vg.bend -o bend_vg
 ```
 
 The input is a text file with one value per line. The options are those of
-ts2vg's command line, with the input first:
+ts2vg's command line, with the input first, and `-x`, which takes the `xs`
+of ts2vg's `build`:
 
 | Option | Values | Default |
 | --- | --- | --- |
@@ -26,11 +27,13 @@ ts2vg's command line, with the input first:
 | `-p`, `--penetrable_limit` | how many points an edge may cross | 0 |
 | `-m`, `--outputmode` | `el` edge list, `ds` degree sequence, `dd` degree distribution, `dc` degree counts | `el` |
 | `-o`, `--output` | a file | standard output |
+| `-x`, `--xs` | a file with the x of each value, one per line, increasing | the index |
 
 `src/graph.bend`, `src/parallel.bend` and `src/penetrable.bend` are the
 library. Each `build` takes the values as an array, which
-`src/series.bend`'s `ys` makes, and returns the edges, with ts2vg's
-`min_weight` and `max_weight` as its `lo` and `hi`. `src/graph.bend`'s
+`src/series.bend`'s `ys` makes, and their x as `G.Index{}` or `G.At{xs}`,
+and returns the edges, with ts2vg's `min_weight` and `max_weight` as its
+`lo` and `hi`. `src/graph.bend`'s
 `build` runs on one thread. `src/parallel.bend`'s `build` gives the same
 edges on every thread, and its `degrees` counts the degrees there; the
 command line uses these two. Only `src/parallel.bend` relies on Base's `@unsafe`
@@ -40,13 +43,16 @@ import it, such as `tests/one_thread.bend`.
 ## Where it differs from ts2vg
 
 - Bend2 has no float64, so bend-vg computes in F32. It rounds each value
-  once from its text to F32, and its x is the index. On the same F32 values,
+  once from its text to F32, and so each x of `-x`. On the same F32 values,
   its unweighted edges equal ts2vg's on every test series. The two can
   differ where three points are nearly collinear, since F32 slopes carry 24
   bits.
-- F32 holds every index below 2^24 exactly, so the command line refuses a
-  series of more than 16,777,216 values. The library's `build` does not
-  check.
+- F32 holds every index below 2^24 exactly, so without `-x` the command
+  line refuses a series of more than 16,777,216 values. The library's
+  `build` does not check.
+- F32 x carries 24 bits too: Unix times in seconds, about 1.7e9, round to
+  multiples of 128. Subtract the first x before writing the file: slopes
+  and distances depend only on differences of x.
 - Rounding a float64 series to F32 can tie values that differ in float64.
   For a series with a large offset, such as `1000 + 0.01 * noise`, subtract
   the offset before writing the file: neither graph changes under a shift.

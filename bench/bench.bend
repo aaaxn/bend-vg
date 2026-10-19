@@ -90,9 +90,9 @@ def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
 def graph(penetrable: Bool, +g: G.Graph, +limit: U32, ys: Array<F32>, +n: U32) -> G.Edges:
   match penetrable:
     case True{}:
-      P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, ys, n)
+      P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, ys, G.Index{}, n)
     case False{}:
-      Par.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, n)
+      Par.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, G.Index{}, n)
 
 def from_values(penetrable: Bool, +g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>) -> IO(Unit):
   do IO<Unit>:

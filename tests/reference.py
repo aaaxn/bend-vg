@@ -75,11 +75,12 @@ def _tol(x_a, x_b, y_a, y_b):
     return max(ABS_TOL, REL_TOL * max(abs(x_a), abs(x_b), abs(y_a), abs(y_b)))
 
 
-def build(ts, kind="natural", directed=None, weighted=None, min_weight=-np.inf, max_weight=np.inf):
-    """Edges (src, dst, w) of the graph of the float32 series `ts`, x = index."""
+def build(ts, kind="natural", directed=None, weighted=None, min_weight=-np.inf, max_weight=np.inf, xs=None):
+    """Edges (src, dst, w) of the graph of the float32 series `ts` at `xs`,
+    by default the index."""
     ts = np.asarray(ts, dtype=F)
     n = len(ts)
-    xs = np.arange(n, dtype=F)
+    xs = np.arange(n, dtype=F) if xs is None else np.asarray(xs, dtype=F)
     lo, hi = F(min_weight), F(max_weight)
     edges = []
 
@@ -131,12 +132,12 @@ def build(ts, kind="natural", directed=None, weighted=None, min_weight=-np.inf, 
     return edges
 
 
-def build_penetrable(ts, kind="natural", directed=None, weighted=None, limit=1, min_weight=-np.inf, max_weight=np.inf):
+def build_penetrable(ts, kind="natural", directed=None, weighted=None, limit=1, min_weight=-np.inf, max_weight=np.inf, xs=None):
     """Edges (src, dst, w) of the limited penetrable graph, as ts2vg's
     _natural_penetrable and _horizontal_penetrable build them."""
     ts = np.asarray(ts, dtype=F)
     n = len(ts)
-    xs = np.arange(n, dtype=F)
+    xs = np.arange(n, dtype=F) if xs is None else np.asarray(xs, dtype=F)
     lo, hi = F(min_weight), F(max_weight)
     edges = []
 

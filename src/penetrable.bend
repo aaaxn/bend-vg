@@ -10,17 +10,20 @@ type Pts is Data:
   PNil{}
   PCon{i: U32, x: F32, y: F32, next: Pts}
 
-# The points of `ys` from index `i` down to 0, onto `acc`; `yr` holds y at
-# `i`. The last read, at index -1, wraps around.
-def points(count: Nat, +i: U32, yr: Array<F32> & F32, acc: Pts) -> Pts:
+# The points of `ys` and `xs` from index `i` down to 0, onto `acc`; `yr`
+# and `xr` hold y and x at `i`, and x is the index if `index` says so. The
+# last read, at index -1, wraps around.
+def points(count: Nat, +i: U32, yr: Array<F32> & F32, xr: Array<F32> & F32, +index: Bool, acc: Pts) -> Pts:
   match count:
     case 0n:
       (ys, y) = yr
+      (xs, x) = xr
       acc
     case 1n+c:
       (ys, +y) = yr
+      (xs, +x) = xr
       +i2 = (i - 1 : U32)
-      points(c, i2, Array.get(F32, ys, i2), PCon{i, U32.to_f32(i), y, acc})
+      points(c, i2, Array.get(F32, ys, i2), Array.get(F32, xs, i2), index, PCon{i, G.pick(index, U32.to_f32(i), x), y, acc})
 
 # The `limit + 1` largest slopes (or heights) a sweep has accepted, as ts2vg's
 # max_slopes; the sweep accepts a point above the smallest of them.
@@ -211,8 +214,15 @@ def split(depth: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +h
       a b = split(d, g, dir, k, lo, hi, limit, pts, len, c1u, c1) split(d, g, dir, k, lo, hi, limit, drop(c1, pts), (len - c1u : U32), (cu - c1u : U32), Nat.sub(count, c1))
       G.EJoin{a, b}
 
-# The limited penetrable graph of the `n` values `ys`, each at its index,
-# crossing at most `limit` points. x is the index as an F32, exact for up
-# to 2^24 values.
-def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, ys: Array<F32>, +n: U32) -> G.Edges:
-  split(7n, g, dir, k, lo, hi, U32.to_nat(limit), points(U32.to_nat(n), (n - 1 : U32), Array.get(F32, ys, (n - 1 : U32)), PNil{}), n, n, U32.to_nat(n))
+def built(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, ys: Array<F32>, xs: Array<F32>, +n: U32) -> G.Edges:
+  split(7n, g, dir, k, lo, hi, U32.to_nat(limit), points(U32.to_nat(n), (n - 1 : U32), Array.get(F32, ys, (n - 1 : U32)), Array.get(F32, xs, (n - 1 : U32)), index, PNil{}), n, n, U32.to_nat(n))
+
+# The limited penetrable graph of the `n` values `ys` at `xs`, crossing at
+# most `limit` points. The x of `G.Index{}` is the index as an F32, exact
+# for up to 2^24 values; the x of `G.At{xs}` must increase.
+def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
+  match xs:
+    case G.Index{}:
+      built(True{}, g, dir, k, lo, hi, limit, ys, G.no_xs(), n)
+    case G.At{a}:
+      built(False{}, g, dir, k, lo, hi, limit, ys, a, n)

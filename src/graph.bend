@@ -26,6 +26,12 @@ type Weight is Data:
   AbsAngle{}
   NumPenetrations{}
 
+# The x coordinate of each value: its index, or the value at the same
+# index of an array.
+type Xs is Type:
+  Index{}
+  At{xs: Array<F32>}
+
 # The edges, as a rope: ECon adds an edge and EJoin joins two ropes, so the
 # two halves of a split join in one step.
 type Edges is Data:
@@ -355,115 +361,157 @@ def merge_block(b: Block, m: Merged) -> Merged:
   push_block_stack(st, bound_unbounded(in_order(unbounded, UNil{}), Merged{push_opening_nans(U32.to_nat(opening_nans), start, g), lefts, rights, F32.add(v, visits)}))
 
 # Bend matches only parameters, so a read's result must arrive as one: a
-# sweep reads y at `ahead`, where the next sweep starts, and hands it over.
+# sweep reads y and x at `ahead`, where the next sweep starts, and hands them
+# over. The sweeps read x through `x_at`, so x as the index costs no read.
 type Walked is Type:
-  Walked{yr: Array<F32> & F32, es: Edges}
+  Walked{yr: Array<F32> & F32, xr: Array<F32> & F32, es: Edges}
 
-def natural_right(count: Nat, +j: U32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def at_index(xs: Array<F32>, +j: U32) -> Array<F32> & F32:
+  (xs, U32.to_f32(j))
+
+def natural_right(~x_at: Array<F32> -> U32 -> Array<F32> & F32, count: Nat, +j: U32, yr: Array<F32> & F32, xr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
       (ys, yb) = yr
-      Walked{Array.get(F32, ys, ahead), es}
+      (xs, xb) = xr
+      Walked{Array.get(F32, ys, ahead), Array.get(F32, xs, ahead), es}
     case 1n+c:
       (ys, +yb) = yr
-      +xb = U32.to_f32(j)
+      (xs, +xb) = xr
       +s = F32.div(F32.sub(yb, ya), F32.sub(xb, xa))
       +seen = clears(F32.is_gt(s, best), s, best, scale_a, xb, yb)
       +j2 = (j + 1 : U32)
-      natural_right(c, j2, Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, s, es), ahead)
+      natural_right(~x_at, c, j2, Array.get(F32, ys, j2), x_at(xs, j2), k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, s, es), ahead)
 
-def natural_left(count: Nat, +j: U32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def natural_left(~x_at: Array<F32> -> U32 -> Array<F32> & F32, count: Nat, +j: U32, yr: Array<F32> & F32, xr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
       (ys, yb) = yr
-      Walked{Array.get(F32, ys, ahead), es}
+      (xs, xb) = xr
+      Walked{Array.get(F32, ys, ahead), Array.get(F32, xs, ahead), es}
     case 1n+c:
       (ys, +yb) = yr
-      +xb = U32.to_f32(j)
+      (xs, +xb) = xr
       +s = F32.div(F32.sub(yb, ya), F32.neg(F32.sub(xb, xa)))
       +seen = clears(F32.is_gt(s, best), s, best, scale_a, xb, yb)
       +j2 = (j - 1 : U32)
-      natural_left(c, j2, Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, F32.neg(s), es), ahead)
+      natural_left(~x_at, c, j2, Array.get(F32, ys, j2), x_at(xs, j2), dir, k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, F32.neg(s), es), ahead)
 
-def horizontal_right(count: Nat, +j: U32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def horizontal_right(~x_at: Array<F32> -> U32 -> Array<F32> & F32, count: Nat, +j: U32, yr: Array<F32> & F32, xr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
       (ys, yb) = yr
-      Walked{Array.get(F32, ys, ahead), es}
+      (xs, xb) = xr
+      Walked{Array.get(F32, ys, ahead), Array.get(F32, xs, ahead), es}
     case 1n+c:
       (ys, +yb) = yr
+      (xs, xb) = xr
       +seen = F32.is_gt(yb, best)
       +j2 = (j + 1 : U32)
-      horizontal_right(c, j2, Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_right(seen, k, lo, hi, ia, j, xa, U32.to_f32(j), ya, yb, nan(), es), ahead)
+      horizontal_right(~x_at, c, j2, Array.get(F32, ys, j2), x_at(xs, j2), k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, nan(), es), ahead)
 
-def horizontal_left(count: Nat, +j: U32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def horizontal_left(~x_at: Array<F32> -> U32 -> Array<F32> & F32, count: Nat, +j: U32, yr: Array<F32> & F32, xr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
       (ys, yb) = yr
-      Walked{Array.get(F32, ys, ahead), es}
+      (xs, xb) = xr
+      Walked{Array.get(F32, ys, ahead), Array.get(F32, xs, ahead), es}
     case 1n+c:
       (ys, +yb) = yr
+      (xs, xb) = xr
       +seen = F32.is_gt(yb, best)
       +j2 = (j - 1 : U32)
-      horizontal_left(c, j2, Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_left(seen, dir, k, lo, hi, ia, j, xa, U32.to_f32(j), ya, yb, nan(), es), ahead)
+      horizontal_left(~x_at, c, j2, Array.get(F32, ys, j2), x_at(xs, j2), dir, k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, nan(), es), ahead)
 
-def right_sweep(g: Graph, count: Nat, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, es: Edges) -> Walked:
-  match g:
-    case Natural{}:
-      natural_right(count, (ia + 1 : U32), yr, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia - 1 : U32))
-    case Horizontal{}:
-      horizontal_right(count, (ia + 1 : U32), yr, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia - 1 : U32))
+# Each sweep, with x as the index (`index`) or read from `xs`.
+def right_sweep(g: Graph, index: Bool, count: Nat, yr: Array<F32> & F32, xs: Array<F32>, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, es: Edges) -> Walked:
+  match g index:
+    case Natural{} True{}:
+      natural_right(~(a => +j => at_index(a, j)), count, (ia + 1 : U32), yr, at_index(xs, (ia + 1 : U32)), k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia - 1 : U32))
+    case Natural{} False{}:
+      natural_right(~(a => +j => Array.get(F32, a, j)), count, (ia + 1 : U32), yr, Array.get(F32, xs, (ia + 1 : U32)), k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia - 1 : U32))
+    case Horizontal{} True{}:
+      horizontal_right(~(a => +j => at_index(a, j)), count, (ia + 1 : U32), yr, at_index(xs, (ia + 1 : U32)), k, lo, hi, ia, xa, ya, neg_inf(), es, (ia - 1 : U32))
+    case Horizontal{} False{}:
+      horizontal_right(~(a => +j => Array.get(F32, a, j)), count, (ia + 1 : U32), yr, Array.get(F32, xs, (ia + 1 : U32)), k, lo, hi, ia, xa, ya, neg_inf(), es, (ia - 1 : U32))
 
-def left_sweep(g: Graph, count: Nat, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, w: Walked) -> Walked:
-  match g:
-    case Natural{}:
-      Walked{yr, es} = w
-      natural_left(count, (ia - 1 : U32), yr, dir, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia + 1 : U32))
-    case Horizontal{}:
-      Walked{yr, es} = w
-      horizontal_left(count, (ia - 1 : U32), yr, dir, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia + 1 : U32))
+def left_sweep(g: Graph, index: Bool, count: Nat, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, w: Walked) -> Walked:
+  match g index:
+    case Natural{} True{}:
+      Walked{yr, xr, es} = w
+      (xs, xv) = xr
+      natural_left(~(a => +j => at_index(a, j)), count, (ia - 1 : U32), yr, at_index(xs, (ia - 1 : U32)), dir, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia + 1 : U32))
+    case Natural{} False{}:
+      Walked{yr, xr, es} = w
+      (xs, xv) = xr
+      natural_left(~(a => +j => Array.get(F32, a, j)), count, (ia - 1 : U32), yr, Array.get(F32, xs, (ia - 1 : U32)), dir, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia + 1 : U32))
+    case Horizontal{} True{}:
+      Walked{yr, xr, es} = w
+      (xs, xv) = xr
+      horizontal_left(~(a => +j => at_index(a, j)), count, (ia - 1 : U32), yr, at_index(xs, (ia - 1 : U32)), dir, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia + 1 : U32))
+    case Horizontal{} False{}:
+      Walked{yr, xr, es} = w
+      (xs, xv) = xr
+      horizontal_left(~(a => +j => Array.get(F32, a, j)), count, (ia - 1 : U32), yr, Array.get(F32, xs, (ia - 1 : U32)), dir, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia + 1 : U32))
 
 type Out is Type:
-  Out{cols: Cols, es: Edges}
+  Out{cols: Cols, xs: Array<F32>, es: Edges}
 
-def points(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, w: Walked, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Out:
+def points(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, w: Walked, +index: Bool, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Out:
   match count:
     case 0n:
       (lefts, l) = lr
       (rights, r) = rr
-      Walked{yr, es} = w
+      Walked{yr, xr, es} = w
       (ys, y) = yr
-      Out{Cols{ys, lefts, rights}, es}
+      (xs, x) = xr
+      Out{Cols{ys, lefts, rights}, xs, es}
     case 1n+c:
       (lefts, +l) = lr
       (rights, +r) = rr
-      Walked{yr, es} = w
+      Walked{yr, xr, es} = w
       (ys, +y) = yr
-      +x = U32.to_f32(i)
+      (xs, +xv) = xr
+      +x = pick(index, U32.to_f32(i), xv)
       +i2 = (i + 1 : U32)
-      points(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), left_sweep(g, U32.to_nat(l), dir, k, lo, hi, i, x, y, right_sweep(g, U32.to_nat(r), Array.get(F32, ys, i2), k, lo, hi, i, x, y, es)), g, dir, k, lo, hi)
+      points(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), left_sweep(g, index, U32.to_nat(l), dir, k, lo, hi, i, x, y, right_sweep(g, index, U32.to_nat(r), Array.get(F32, ys, i2), xs, k, lo, hi, i, x, y, es)), index, g, dir, k, lo, hi)
 
 def edges_of(o: Out) -> Edges:
-  Out{cols, es} = o
+  Out{cols, xs, es} = o
   es
 
-def swept(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Edges:
+def swept(+index: Bool, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, xs: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Edges:
   (rights, visits) = r
-  edges_of(points(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), Walked{Array.get(F32, ys, 0), ENil{}}, g, dir, k, lo, hi))
+  edges_of(points(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), Walked{Array.get(F32, ys, 0), Array.get(F32, xs, 0), ENil{}}, index, g, dir, k, lo, hi))
 
-def bounded(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, m: Merged) -> Edges:
+def bounded(+index: Bool, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, xs: Array<F32>, m: Merged) -> Edges:
   Merged{st, lefts, rights, +visits} = m
-  swept(g, dir, k, lo, hi, n, ys, lefts, flush(st, n, rights, visits))
+  swept(index, g, dir, k, lo, hi, n, ys, xs, lefts, flush(st, n, rights, visits))
 
-def stacked(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, l: Local) -> Edges:
+def stacked(+index: Bool, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, xs: Array<F32>, l: Local) -> Edges:
   Local{b, c} = l
   Cols{ys, lefts, rights} = c
-  bounded(g, dir, k, lo, hi, n, ys, merge_block(b, Merged{KNil{}, lefts, rights, 0.0}))
+  bounded(index, g, dir, k, lo, hi, n, ys, xs, merge_block(b, Merged{KNil{}, lefts, rights, 0.0}))
 
-# The graph of the `n` values `ys`, each at its index, on one thread, as one
-# block. `lo` and `hi` bound the weights, as ts2vg's min_weight and
-# max_weight; pass neg_inf() and inf() for no bound. x is the index as an
-# F32, exact for up to 2^24 values. src/parallel.bend builds the same graph
-# on every thread, and relies on Base's @unsafe Array.fork.
-def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, +n: U32) -> Edges:
-  stacked(g, dir, k, lo, hi, n, block_pass(U32.to_nat(n), 0, Array.get(F32, ys, 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0)))
+def counts(+n: U32) -> Array<U32>:
+  Array.new(U32, Nat.add(1n, U32.log2(n)), 0)
+
+# A stand-in for `xs` when x is the index, which no sweep reads.
+def no_xs() -> Array<F32>:
+  Array.new(F32, 0n, 0.0)
+
+def built(+index: Bool, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: Array<F32>, +n: U32) -> Edges:
+  stacked(index, g, dir, k, lo, hi, n, xs, block_pass(U32.to_nat(n), 0, Array.get(F32, ys, 0), counts(n), counts(n)))
+
+# The graph of the `n` values `ys` at `xs`, on one thread, as one block.
+# `lo` and `hi` bound the weights, as ts2vg's min_weight and max_weight;
+# pass neg_inf() and inf() for no bound. The x of `Index{}` is the index as
+# an F32, exact for up to 2^24 values; the x of `At{xs}` must increase.
+# src/parallel.bend builds the same graph on every thread, and relies on
+# Base's @unsafe Array.fork.
+def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: Xs, +n: U32) -> Edges:
+  match xs:
+    case Index{}:
+      built(True{}, g, dir, k, lo, hi, ys, no_xs(), n)
+    case At{a}:
+      built(False{}, g, dir, k, lo, hi, ys, a, n)
