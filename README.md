@@ -8,6 +8,16 @@ intervals of ts2vg's divide and conquer with a stack over each block of
 points, in parallel, then runs the sweeps of all intervals in parallel.
 The penetrable graphs split their sweeps among threads too.
 
+## Requirements
+
+- [Bend](https://bend-lang.com) 2.0.37, which installs with
+  `curl -fsSL https://bend-lang.com/install.sh | sh`. A native build needs
+  clang 14 or newer.
+- For the tests and the benchmark: [uv](https://docs.astral.sh/uv/), and
+  [Bun](https://bun.sh) to run the JavaScript build.
+
+bend-vg is tested on Linux x86-64.
+
 ## Use it
 
 ```sh
@@ -110,11 +120,19 @@ uv run pytest -n auto
 `LAWS.bend` states that each level of the fork tree halves its chunks
 without losing or repeating one, and that the parallel penetrable build
 gives the edges of one sequential pass. `PROOF.bend` proves both. It still
-prints SOME PROOFS FAIL, because `src/parallel.bend` relies on Base's
-`@unsafe` `Array.fork`. `AGENTS.md` names the defs. The tests build
-`bend_vg`, `tests/one_thread.bend` and `tests/library.bend` natively and
-as JavaScript, and compare them, bit for bit, with `tests/reference.py`, a
-float32 copy of ts2vg's kernels. They also compare the native build with ts2vg itself: the
-unweighted edges must be equal, and the weights within 1e-6 relative. On
-series of 100,000 values, they compare the JavaScript build with the
-native one.
+prints SOME PROOFS FAIL, naming the 13 defs of `src/parallel.bend` that
+rely on Base's `@unsafe` `Array.fork`: the tasks that share a forked array
+read it, write cells no other task writes, or add to cells atomically.
+
+The tests build `bend_vg`, `tests/one_thread.bend` and `tests/library.bend`
+natively and as JavaScript, and compare them, bit for bit, with
+`tests/reference.py`, a float32 copy of ts2vg's kernels. They also compare
+the native build with ts2vg itself: the unweighted edges must be equal,
+and the weights within 1e-6 relative. On series of 100,000 values, they
+compare the JavaScript build with the native one.
+
+## License
+
+MIT, in [LICENSE](LICENSE). bend-vg ports ts2vg's graph kernels, and
+`tests/reference.py` copies them in float32, so the license carries ts2vg's
+copyright notice too.
