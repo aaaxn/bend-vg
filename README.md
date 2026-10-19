@@ -92,9 +92,12 @@ the penetrable ones among every thread. `src/parallel.bend`'s `build` and
 [docs/benchmark.md](docs/benchmark.md) times bend-vg against ts2vg. On one
 thread, bend-vg builds every natural graph as fast as ts2vg's Cython kernel
 or faster, and takes about twice as long on the horizontal graphs. With 64
-threads, it builds the graphs of 1,000,000 points 17 to 75 times faster
-than ts2vg's `build`. At 50,000 points, 64 threads build the limited
-penetrable natural graph 7 times faster than ts2vg.
+threads, it builds the graphs of 1,000,000 points 17 to 76 times faster
+than ts2vg's `build`. The limited penetrable natural graph takes a little
+less time than ts2vg's kernel on one thread, and 64 threads build it 42
+times faster at 50,000 points. `bench/compare.py` compares the edges with
+ts2vg's: 24 of the 28 graphs there are equal edge for edge, and in the
+other 4, every edge that only one tool has is in the graph.
 
 ## Check it
 

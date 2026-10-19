@@ -1,10 +1,11 @@
 """Times bend-vg's build against ts2vg's on the same float32 series.
 
-    uv run python bench/run.py [--sizes 10000 100000 1000000] [--threads 1 8 64] [--limit 0]
+    uv run python bench/run.py [--sizes 10000 100000 1000000] [--threads 1 8 64] [--limit 0] [--xs]
 
 ts2vg's `build` makes the edge list and the degrees; `only_degrees` skips
 the list. bend-vg's time is `bench/bench.bend`: the edges, a walk over them,
-then the degrees. `--limit` above 0 times the limited penetrable graphs.
+then the degrees. `--limit` above 0 times the limited penetrable graphs,
+and `--xs` gives the points irregular x, as ts2vg's `build(ts, xs)`.
 Every time is the best of `--repeats` runs, in ms, with
 the series already in memory.
 """
@@ -43,6 +44,7 @@ def main():
     parser.add_argument("--threads", type=int, nargs="+", default=[1, 8, 64])
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--xs", action="store_true")
     args = parser.parse_args()
 
     (ROOT / "build").mkdir(exist_ok=True)
@@ -60,16 +62,21 @@ def main():
                     ts = make(np.random.default_rng(0), n).astype(np.float32)
                     path = work / f"{name}_{n}.txt"
                     path.write_text("".join(np.format_float_positional(v, unique=True) + "\n" for v in ts))
-                    x = ts.astype(np.float64)
+                    y = ts.astype(np.float64)
+                    xs, extra = None, []
+                    if args.xs:
+                        x32 = np.cumsum(0.5 + np.random.default_rng(1).random(n)).astype(np.float32)
+                        (work / f"xs_{n}.txt").write_text("".join(np.format_float_positional(v, unique=True) + "\n" for v in x32))
+                        xs, extra = x32.astype(np.float64), [str(work / f"xs_{n}.txt")]
                     make_graph = lambda: graph(penetrable_limit=args.limit)
-                    edges = len(make_graph().build(x).edges)
-                    full = best_ms(lambda: make_graph().build(x), args.repeats)
-                    degrees = best_ms(lambda: make_graph().build(x, only_degrees=True), args.repeats)
+                    edges = len(make_graph().build(y, xs=xs).edges)
+                    full = best_ms(lambda: make_graph().build(y, xs=xs), args.repeats)
+                    degrees = best_ms(lambda: make_graph().build(y, xs=xs, only_degrees=True), args.repeats)
                     cells, counts = [], set()
                     for t in args.threads:
                         runs = []
                         for _ in range(args.repeats):
-                            out = subprocess.run([str(work / "bench"), str(path), kind, str(args.limit), "--threads", str(t)], capture_output=True, text=True, check=True)
+                            out = subprocess.run([str(work / "bench"), str(path), kind, str(args.limit), *extra, "--threads", str(t)], capture_output=True, text=True, check=True)
                             points, m, _, edges_ms, degrees_ms = out.stdout.split()
                             assert int(points) == n, out.stdout
                             counts.add(int(m))

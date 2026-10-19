@@ -1,6 +1,6 @@
 # Times one build of a series' graph, as ts2vg's `build` does it: the edges,
 # then the degree of each node.
-#   bench INPUT natural|horizontal [LIMIT]
+#   bench INPUT natural|horizontal [LIMIT [XS]]
 # prints `points edges checksum edges_ms degrees_ms`. The checksum, the sum of every
 # edge's ends and every degree, makes the run read the whole graph.
 import Base
@@ -87,17 +87,25 @@ def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
     timed : Timed <- stamp_edges(es, tally_tree(Par.fork_depth(), es))
     degrees_of(n, t0, timed)
 
-def from_values(+g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>) -> IO(Unit):
+def from_values(+g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>, xs: G.Xs) -> IO(Unit):
   do IO<Unit>:
     t0 : Nat <- IO.now()
-    edges_of(n, t0, Par.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, ys, G.Index{}}))
+    edges_of(n, t0, Par.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, ys, xs}))
 
-def timed(g: G.Graph, +limit: U32, p: Series.Parsed) -> IO(Unit):
+# The x of each value: the index, or the values of XS.
+def xs_of(x: Maybe<&2, Series.Parsed>, +n: U32) -> G.Xs:
+  match x:
+    case Some{Series.Values{rev, m}}:
+      G.At{Series.ys(rev, n)}
+    case _:
+      G.Index{}
+
+def timed(g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
   match p:
     case Series.Bad{line}:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
     case Series.Values{rev, +n}:
-      from_values(g, limit, n, Series.ys(rev, n))
+      from_values(g, limit, n, Series.ys(rev, n), xs_of(x, n))
 
 def graph_of(horizontal: Bool) -> G.Graph:
   match horizontal:
@@ -118,13 +126,18 @@ def start(args: List<String>) -> IO(Unit):
     case Con{prog, Con{input, Con{+kind, Nil{}}}}:
       do IO<Unit>:
         text : String <- Series.read_text(input)
-        timed(graph_of(String.eq(kind, "horizontal")), 0, Series.parse(text))
+        timed(graph_of(String.eq(kind, "horizontal")), 0, Series.parse(text), None{})
     case Con{prog, Con{input, Con{+kind, Con{limit, Nil{}}}}}:
       do IO<Unit>:
         text : String <- Series.read_text(input)
-        timed(graph_of(String.eq(kind, "horizontal")), limit_of(U32.read(limit)), Series.parse(text))
+        timed(graph_of(String.eq(kind, "horizontal")), limit_of(U32.read(limit)), Series.parse(text), None{})
+    case Con{prog, Con{input, Con{+kind, Con{limit, Con{xs, Nil{}}}}}}:
+      do IO<Unit>:
+        text : String <- Series.read_text(input)
+        xtext : String <- Series.read_text(xs)
+        timed(graph_of(String.eq(kind, "horizontal")), limit_of(U32.read(limit)), Series.parse(text), Some{Series.parse(xtext)})
     case _:
-      IO.die(Unit, 2, "usage: bench INPUT natural|horizontal [LIMIT]")
+      IO.die(Unit, 2, "usage: bench INPUT natural|horizontal [LIMIT [XS]]")
 
 def main() -> IO(Unit):
   do IO<Unit>:
