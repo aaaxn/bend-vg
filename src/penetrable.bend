@@ -70,21 +70,6 @@ def set_at(k: Nat, ts: Tops, v: F32) -> Tops:
     case _ TNil{}:
       TNil{}
 
-# The new smallest top, looked up only when the sweep moved one.
-def relow(seen: Bool, +after: Tops, low: Low) -> Low:
-  match seen:
-    case True{}:
-      lowest(after)
-    case False{}:
-      low
-
-def accept(seen: Bool, +k: Nat, ts: Tops, v: F32) -> Tops:
-  match seen:
-    case True{}:
-      set_at(k, ts, v)
-    case False{}:
-      ts
-
 # How many tops a natural edge with slope `s` does not clear, as ts2vg's
 # num_penetrations weight.
 def blocked_natural(ts: Tops, +s: F32, +t: F32, +n: F32) -> F32:
@@ -129,56 +114,60 @@ def is_count(k: G.Weight) -> Bool:
     case _:
       False{}
 
-def natural_add(seen: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ia: U32, ib: U32, +xa: F32, +xb: F32, +ya: F32, +yb: F32, +s: F32, +scale_a: F32, ts: Tops, es: G.Edges) -> G.Edges:
-  match seen:
-    case True{}:
-      +known = G.pick(is_count(k), blocked_natural(ts, s, G.tol(scale_a, xb, yb), 0.0), G.nan())
-      add_oriented(is_down(dir, ya, yb), k, lo, hi, ia, ib, xa, xb, ya, yb, s, known, es)
-    case False{}:
-      es
+def natural_edge(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ia: U32, ib: U32, +xa: F32, +xb: F32, +ya: F32, +yb: F32, +s: F32, +scale_a: F32, ts: Tops, es: G.Edges) -> G.Edges:
+  +known = G.pick(is_count(k), blocked_natural(ts, s, G.tol(scale_a, xb, yb), 0.0), G.nan())
+  add_oriented(is_down(dir, ya, yb), k, lo, hi, ia, ib, xa, xb, ya, yb, s, known, es)
 
-def horizontal_add(seen: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ia: U32, ib: U32, +xa: F32, xb: F32, +ya: F32, +yb: F32, ts: Tops, es: G.Edges) -> G.Edges:
-  match seen:
-    case True{}:
-      +known = G.pick(is_count(k), blocked_horizontal(ts, ya, yb, 0.0), G.nan())
-      add_oriented(is_down(dir, ya, yb), k, lo, hi, ia, ib, xa, xb, ya, yb, G.nan(), known, es)
-    case False{}:
-      es
+def horizontal_edge(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ia: U32, ib: U32, +xa: F32, xb: F32, +ya: F32, +yb: F32, ts: Tops, es: G.Edges) -> G.Edges:
+  +known = G.pick(is_count(k), blocked_horizontal(ts, ya, yb, 0.0), G.nan())
+  add_oriented(is_down(dir, ya, yb), k, lo, hi, ia, ib, xa, xb, ya, yb, G.nan(), known, es)
 
-# The sweep of point a over the points right of it: ts2vg's inner loop.
-def natural_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, pts: Pts, +ts: Tops, low: Low, es: G.Edges) -> G.Edges:
-  match pts:
-    case PNil{}:
-      es
-    case PCon{ib, +xb, +yb, next}:
-      Low{+lk, +lv} = low
-      +s = F32.div(F32.sub(yb, ya), F32.sub(xb, xa))
-      +seen = G.clears(F32.is_gt(s, lv), s, lv, scale_a, xb, yb)
-      +after = accept(seen, lk, ts, s)
-      natural_sweep(dir, k, lo, hi, ia, xa, ya, scale_a, next, after, relow(seen, after, Low{lk, lv}), natural_add(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, s, scale_a, ts, es))
-
-# The horizontal sweep stops once the smallest top is above a: no later
-# point can be seen.
-def horizontal_sweep(+dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, pts: Pts, stop: Bool, +ts: Tops, low: Low, es: G.Edges) -> G.Edges:
-  match pts stop:
-    case _ True{}:
-      es
+# The sweep of point a over the points right of it: ts2vg's inner loop. A
+# point b the sweep sees replaces the smallest top and adds its edge at the
+# next step, when `up` says so, so a step after an unseen point calls no
+# def that recurses.
+def natural_sweep(pts: Pts, up: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +ts: Tops, low: Low, +ib: U32, +xb: F32, +yb: F32, +sb: F32, es: G.Edges) -> G.Edges:
+  match pts up:
     case PNil{} False{}:
       es
-    case PCon{ib, xb, +yb, next} False{}:
+    case PNil{} True{}:
+      natural_edge(dir, k, lo, hi, ia, ib, xa, xb, ya, yb, sb, scale_a, ts, es)
+    case PCon{+ic, +xc, +yc, next} False{}:
       Low{+lk, +lv} = low
-      +seen = F32.is_gt(ya, lv) && F32.is_gt(yb, lv)
-      +after = accept(seen, lk, ts, yb)
-      +now = relow(seen, after, Low{lk, lv})
-      horizontal_sweep(dir, k, lo, hi, ia, xa, ya, next, seen && F32.is_gt(Low.v(now), ya), after, now, horizontal_add(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, ts, es))
+      +s = F32.div(F32.sub(yc, ya), F32.sub(xc, xa))
+      natural_sweep(next, G.clears(F32.is_gt(s, lv), s, lv, scale_a, xc, yc), dir, k, lo, hi, ia, xa, ya, scale_a, ts, Low{lk, lv}, ic, xc, yc, s, es)
+    case PCon{+ic, +xc, +yc, next} True{}:
+      Low{+lk, lv} = low
+      +after = set_at(lk, ts, sb)
+      +now = lowest(after)
+      +s = F32.div(F32.sub(yc, ya), F32.sub(xc, xa))
+      natural_sweep(next, G.clears(F32.is_gt(s, Low.v(now)), s, Low.v(now), scale_a, xc, yc), dir, k, lo, hi, ia, xa, ya, scale_a, after, now, ic, xc, yc, s, natural_edge(dir, k, lo, hi, ia, ib, xa, xb, ya, yb, sb, scale_a, ts, es))
 
+# The same for the horizontal sweep, which stops once the smallest top is
+# above a: no later point can be seen.
+def horizontal_sweep(pts: Pts, up: Bool, stop: Bool, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +ts: Tops, low: Low, +ib: U32, +xb: F32, +yb: F32, es: G.Edges) -> G.Edges:
+  match pts up stop:
+    case _ False{} True{}:
+      es
+    case PNil{} False{} False{}:
+      es
+    case PNil{} True{} _:
+      horizontal_edge(dir, k, lo, hi, ia, ib, xa, xb, ya, yb, ts, es)
+    case PCon{+ic, xc, +yc, next} False{} False{}:
+      Low{+lk, +lv} = low
+      horizontal_sweep(next, F32.is_gt(ya, lv) && F32.is_gt(yc, lv), False{}, dir, k, lo, hi, ia, xa, ya, ts, Low{lk, lv}, ic, xc, yc, es)
+    case PCon{+ic, xc, +yc, next} True{} _:
+      Low{+lk, lv} = low
+      +after = set_at(lk, ts, yb)
+      +now = lowest(after)
+      horizontal_sweep(next, F32.is_gt(ya, Low.v(now)) && F32.is_gt(yc, Low.v(now)), F32.is_gt(Low.v(now), ya), dir, k, lo, hi, ia, xa, ya, after, now, ic, xc, yc, horizontal_edge(dir, k, lo, hi, ia, ib, xa, xb, ya, yb, ts, es))
 
 def sweep(g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: Nat, ia: U32, +xa: F32, +ya: F32, pts: Pts, es: G.Edges) -> G.Edges:
   match g:
     case G.Natural{}:
-      natural_sweep(dir, k, lo, hi, ia, xa, ya, G.scale(xa, ya), pts, tops_new(limit), Low{0n, G.neg_inf()}, es)
+      natural_sweep(pts, False{}, dir, k, lo, hi, ia, xa, ya, G.scale(xa, ya), tops_new(limit), Low{0n, G.neg_inf()}, 0, 0.0, 0.0, 0.0, es)
     case G.Horizontal{}:
-      horizontal_sweep(dir, k, lo, hi, ia, xa, ya, pts, False{}, tops_new(limit), Low{0n, G.neg_inf()}, es)
+      horizontal_sweep(pts, False{}, False{}, dir, k, lo, hi, ia, xa, ya, tops_new(limit), Low{0n, G.neg_inf()}, 0, 0.0, 0.0, es)
 
 # The sweeps of the first `count` points of `pts`, one rope each: ts2vg's
 # outer loop.
