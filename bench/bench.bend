@@ -22,12 +22,30 @@ def tally(es: G.Edges, t: Tally) -> Tally:
     case G.EJoin{a, b}:
       tally(b, tally(a, t))
 
-def degree_sum(xs: List<U32>, +acc: U32) -> U32:
-  match xs:
-    case Nil{}:
+def both(x: Tally, y: Tally) -> Tally:
+  match x y:
+    case Tally{m1, s1} Tally{m2, s2}:
+      Tally{(m1 + m2 : U32), (s1 + s2 : U32)}
+
+def tally_tree(depth: Nat, es: G.Edges) -> Tally:
+  match depth es:
+    case 1n++p G.EJoin{a, b}:
+      x y = tally_tree(p, a) tally_tree(p, b)
+      both(x, y)
+    case 0n G.EJoin{a, b}:
+      x y = tally(a, Tally{0, 0}) tally(b, Tally{0, 0})
+      both(x, y)
+    case _ _:
+      tally(es, Tally{0, 0})
+
+def degree_sum(count: Nat, +i: U32, r: Array<U32> & U32, +acc: U32) -> U32:
+  match count:
+    case 0n:
+      (d, v) = r
       acc
-    case Con{x, rest}:
-      degree_sum(rest, (acc + x : U32))
+    case 1n+c:
+      (d, +v) = r
+      degree_sum(c, (i + 1 : U32), Array.get(U32, d, (i + 1 : U32)), (acc + v : U32))
 
 def add_degrees(t: Tally, +d: U32) -> Tally:
   Tally{m, sum} = t
@@ -60,12 +78,12 @@ def report(+n: U32, +t0: Nat, +t1: Nat, done: Tally & Nat) -> IO(Unit):
 def degrees_of(+n: U32, +t0: Nat, timed: Timed) -> IO(Unit):
   Timed{es, t, +t1} = timed
   do IO<Unit>:
-    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(Array.to_list(~U32, Report.degrees(es, Report.slots(n))), 0)))
+    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Report.degrees(es, Report.slots(n)), 0), 0)))
     report(n, t0, t1, done)
 
 def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
   do IO<Unit>:
-    timed : Timed <- stamp_edges(es, tally(es, Tally{0, 0}))
+    timed : Timed <- stamp_edges(es, tally_tree(G.depth(), es))
     degrees_of(n, t0, timed)
 
 def built(penetrable: Bool, +g: G.Graph, +limit: U32, pts: G.Pts, +n: U32) -> G.Edges:

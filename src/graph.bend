@@ -38,10 +38,6 @@ type Edges is Data:
   ECon{src: U32, dst: U32, w: F32, next: Edges}
   EJoin{a: Edges, b: Edges}
 
-# An interval's highest point and its position in the interval.
-type Pivot is Data:
-  Pivot{i: U32, x: F32, y: F32, k: U32}
-
 # F32 words
 
 def from_bits(word: U32) -> F32:
@@ -179,136 +175,277 @@ def clears(up: Bool, +s: F32, +best: F32, +scale_a: F32, +xb: F32, +yb: F32) -> 
     case False{}:
       False{}
 
-def natural_right(+k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, pts: Pts, +best: F32, es: Edges) -> Edges:
+# Divide and conquer: ts2vg's _compute_graph takes an interval's first
+# highest point as its pivot, sweeps the interval's points left and right of
+# it, and recurses on both sides. Every point is the pivot of one interval,
+# so once each point knows how many points its interval holds on each side,
+# the sweeps no longer depend on each other.
+
+# The stack holds the points no later point has beaten yet. A point pops the
+# entries it beats; the entry left on top bounds its interval on the left,
+# and the point that pops an entry bounds that entry's interval on the right.
+type Stack is Data:
+  KNil{}
+  KCon{i: U32, key: F32, next: Stack}
+
+# What a later point must beat to pop y. An equal point beats nothing, so an
+# interval's first highest point is its pivot. A NaN beats nothing either,
+# and ts2vg's argmax takes it only as an interval's first point, so a NaN at
+# i is the pivot of the right side of i - 1: it takes the key of the entry
+# below it and leaves the stack with that entry.
+def key(+y: F32, +below: F32) -> F32:
+  pick(is_nan(y), below, y)
+
+# The work only balances the split, so F32 rounding does no harm.
+type Popped is Type:
+  Popped{first: U32, below: F32, st: Stack, rights: Array<U32>, visits: F32}
+
+def pops(rest: Stack, beat: Bool, +y: F32, +i: U32, +j: U32, +kj: F32, rights: Array<U32>, +visits: F32) -> Popped:
+  match rest beat:
+    case KCon{+j2, +k2, rest2} True{}:
+      +r = (i - 1 - j : U32)
+      pops(rest2, F32.is_gt(y, k2), y, i, j2, k2, Array.set(U32, rights, j, r), F32.add(visits, U32.to_f32(r)))
+    case KNil{} True{}:
+      +r = (i - 1 - j : U32)
+      Popped{0, inf(), KNil{}, Array.set(U32, rights, j, r), F32.add(visits, U32.to_f32(r))}
+    case _ False{}:
+      Popped{(j + 1 : U32), kj, KCon{j, kj, rest}, rights, visits}
+
+def flush(st: Stack, +n: U32, rights: Array<U32>, +visits: F32) -> Array<U32> & F32:
+  match st:
+    case KCon{+j, k, rest}:
+      +r = (n - 1 - j : U32)
+      flush(rest, n, Array.set(U32, rights, j, r), F32.add(visits, U32.to_f32(r)))
+    case KNil{}:
+      (rights, visits)
+
+# lefts and rights count the points each point's left and right sweeps visit.
+type Cols is Type:
+  Cols{xs: Array<F32>, ys: Array<F32>, lefts: Array<U32>, rights: Array<U32>}
+
+type Counted is Type:
+  Counted{cols: Cols, visits: F32}
+
+def counted(xs: Array<F32>, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Counted:
+  (rights, visits) = r
+  Counted{Cols{xs, ys, lefts, rights}, visits}
+
+def pass(pts: Pts, +i: U32, +x: F32, +y: F32, popped: Popped, xs: Array<F32>, ys: Array<F32>, lefts: Array<U32>) -> Counted:
+  match pts popped:
+    case PCon{+i2, +x2, +y2, next} Popped{+first, +below, st, rights, +visits}:
+      +k = key(y, below)
+      +l = (i - first : U32)
+      pass(next, i2, x2, y2, pops(st, F32.is_gt(y2, k), y2, i2, i, k, rights, F32.add(visits, U32.to_f32((l + 1 : U32)))), Array.set(F32, xs, i, x), Array.set(F32, ys, i, y), Array.set(U32, lefts, i, l))
+    case PNil{} Popped{+first, +below, st, rights, +visits}:
+      +l = (i - first : U32)
+      counted(Array.set(F32, xs, i, x), Array.set(F32, ys, i, y), Array.set(U32, lefts, i, l), flush(KCon{i, key(y, below), st}, (i + 1 : U32), rights, F32.add(visits, U32.to_f32((l + 1 : U32)))))
+
+def columns(pts: Pts, +n: U32) -> Counted:
   match pts:
+    case PCon{+i, +x, +y, next}:
+      +d = Nat.add(1n, U32.log2(n))
+      pass(next, i, x, y, Popped{0, inf(), KNil{}, Array.new(U32, d, 0), 0.0}, Array.new(F32, d, 0.0), Array.new(F32, d, 0.0), Array.new(U32, d, 0))
     case PNil{}:
-      es
-    case PCon{ib, +xb, +yb, next}:
+      Counted{Cols{Array.new(F32, 0n, 0.0), Array.new(F32, 0n, 0.0), Array.new(U32, 0n, 0), Array.new(U32, 0n, 0)}, 0.0}
+
+type Chunks is Data:
+  CNil{}
+  CCon{start: U32, count: U32, next: Chunks}
+
+def close(full: Bool, +start: U32, +end: U32, cs: Chunks) -> Chunks:
+  match full:
+    case True{}:
+      CCon{start, (end - start : U32), cs}
+    case False{}:
+      cs
+
+type Cut is Type:
+  Cut{lefts: Array<U32>, rights: Array<U32>, cs: Chunks, m: U32}
+
+def cut(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, +start: U32, +acc: U32, +target: U32, cs: Chunks, +m: U32) -> Cut:
+  match count:
+    case 0n:
+      (lefts, l) = lr
+      (rights, r) = rr
+      +last = U32.is_lt(start, i)
+      Cut{lefts, rights, close(last, start, i, cs), pick_u32(last, (m + 1 : U32), m)}
+    case 1n+c:
+      (lefts, +l) = lr
+      (rights, +r) = rr
+      +w = (acc + l + r + 1 : U32)
+      +full = U32.is_ge(w, target)
+      +i2 = (i + 1 : U32)
+      cut(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), pick_u32(full, i2, start), pick_u32(full, 0, w), target, close(full, start, i2, cs), pick_u32(full, (m + 1 : U32), m))
+
+# The levels of the fork tree.
+def depth() -> Nat:
+  8n
+
+# About two chunks for each of the tree's leaves.
+def target(+visits: F32) -> U32:
+  U32.max(1, F32.to_u32(F32.div(visits, U32.to_f32(U32.shln(4, depth())))))
+
+type Halves is Data:
+  Halves{a: Chunks, na: U32, b: Chunks, nb: U32}
+
+def halve(k: Nat, cs: Chunks, +na: U32, +total: U32, acc: Chunks) -> Halves:
+  match k cs:
+    case 1n+q CCon{+start, +count, next}:
+      halve(q, next, na, total, CCon{start, count, acc})
+    case _ _:
+      Halves{acc, na, cs, (total - na : U32)}
+
+def halves(cs: Chunks, +m: U32) -> Halves:
+  halve(U32.to_nat(U32.shr(m)), cs, U32.shr(m), m, CNil{})
+
+def fork4(a: Array<F32> & Array<F32>, b: Array<F32> & Array<F32>, c: Array<U32> & Array<U32>, d: Array<U32> & Array<U32>) -> Cols & Cols:
+  (a1, a2) = a
+  (b1, b2) = b
+  (c1, c2) = c
+  (d1, d2) = d
+  (Cols{a1, b1, c1, d1}, Cols{a2, b2, c2, d2})
+
+def fork_cols(c: Cols) -> Cols & Cols:
+  Cols{xs, ys, lefts, rights} = c
+  fork4(Array.fork(F32, xs), Array.fork(F32, ys), Array.fork(U32, lefts), Array.fork(U32, rights))
+
+# Bend matches only parameters, so a read's result must arrive as one: a
+# sweep reads x and y at `ahead`, where the next sweep starts, and hands them
+# over.
+type Walked is Type:
+  Walked{xr: Array<F32> & F32, yr: Array<F32> & F32, es: Edges}
+
+def natural_right(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+  match count:
+    case 0n:
+      (xs, xb) = xr
+      (ys, yb) = yr
+      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+    case 1n+c:
+      (xs, +xb) = xr
+      (ys, +yb) = yr
       +s = F32.div(F32.sub(yb, ya), F32.sub(xb, xa))
       +seen = clears(F32.is_gt(s, best), s, best, scale_a, xb, yb)
-      natural_right(k, lo, hi, ia, xa, ya, scale_a, next, pick(seen, s, best), add_right(seen, k, lo, hi, ia, ib, xa, xb, ya, yb, s, es))
+      +j2 = (j + 1 : U32)
+      natural_right(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, s, es), ahead)
 
-def natural_left(+dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, pts: Pts, +best: F32, es: Edges) -> Edges:
-  match pts:
-    case PNil{}:
-      es
-    case PCon{ib, +xb, +yb, next}:
+def natural_left(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+  match count:
+    case 0n:
+      (xs, xb) = xr
+      (ys, yb) = yr
+      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+    case 1n+c:
+      (xs, +xb) = xr
+      (ys, +yb) = yr
       +s = F32.div(F32.sub(yb, ya), F32.neg(F32.sub(xb, xa)))
       +seen = clears(F32.is_gt(s, best), s, best, scale_a, xb, yb)
-      natural_left(dir, k, lo, hi, ia, xa, ya, scale_a, next, pick(seen, s, best), add_left(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, F32.neg(s), es))
+      +j2 = (j - 1 : U32)
+      natural_left(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, F32.neg(s), es), ahead)
 
-def horizontal_right(+k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, pts: Pts, +best: F32, es: Edges) -> Edges:
-  match pts:
-    case PNil{}:
-      es
-    case PCon{ib, xb, +yb, next}:
+def horizontal_right(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+  match count:
+    case 0n:
+      (xs, xb) = xr
+      (ys, yb) = yr
+      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+    case 1n+c:
+      (xs, xb) = xr
+      (ys, +yb) = yr
       +seen = F32.is_gt(yb, best)
-      horizontal_right(k, lo, hi, ia, xa, ya, next, pick(seen, yb, best), add_right(seen, k, lo, hi, ia, ib, xa, xb, ya, yb, nan(), es))
+      +j2 = (j + 1 : U32)
+      horizontal_right(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, nan(), es), ahead)
 
-def horizontal_left(+dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, pts: Pts, +best: F32, es: Edges) -> Edges:
-  match pts:
-    case PNil{}:
-      es
-    case PCon{ib, xb, +yb, next}:
+def horizontal_left(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+  match count:
+    case 0n:
+      (xs, xb) = xr
+      (ys, yb) = yr
+      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+    case 1n+c:
+      (xs, xb) = xr
+      (ys, +yb) = yr
       +seen = F32.is_gt(yb, best)
-      horizontal_left(dir, k, lo, hi, ia, xa, ya, next, pick(seen, yb, best), add_left(seen, dir, k, lo, hi, ia, ib, xa, xb, ya, yb, nan(), es))
+      +j2 = (j - 1 : U32)
+      horizontal_left(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, nan(), es), ahead)
 
-def left_sweep(g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ia: U32, +xa: F32, +ya: F32, pts: Pts, es: Edges) -> Edges:
+def right_sweep(g: Graph, count: Nat, xr: Array<F32> & F32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, es: Edges) -> Walked:
   match g:
     case Natural{}:
-      natural_left(dir, k, lo, hi, ia, xa, ya, scale(xa, ya), pts, neg_inf(), es)
+      natural_right(count, (ia + 1 : U32), xr, yr, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia - 1 : U32))
     case Horizontal{}:
-      horizontal_left(dir, k, lo, hi, ia, xa, ya, pts, neg_inf(), es)
+      horizontal_right(count, (ia + 1 : U32), xr, yr, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia - 1 : U32))
 
-def right_sweep(g: Graph, +k: Weight, +lo: F32, +hi: F32, ia: U32, +xa: F32, +ya: F32, pts: Pts, es: Edges) -> Edges:
+def left_sweep(g: Graph, count: Nat, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, w: Walked) -> Walked:
   match g:
     case Natural{}:
-      natural_right(k, lo, hi, ia, xa, ya, scale(xa, ya), pts, neg_inf(), es)
+      Walked{xr, yr, es} = w
+      natural_left(count, (ia - 1 : U32), xr, yr, dir, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia + 1 : U32))
     case Horizontal{}:
-      horizontal_right(k, lo, hi, ia, xa, ya, pts, neg_inf(), es)
+      Walked{xr, yr, es} = w
+      horizontal_left(count, (ia - 1 : U32), xr, yr, dir, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia + 1 : U32))
 
-# Divide and conquer: ts2vg's _compute_graph. The pivot is the first highest
-# point; its sweeps add its edges, and the points left and right of it form
-# two independent intervals, built in parallel. Each side is already ordered
-# nearest the pivot first, so it becomes an interval as it is: the left side
-# runs by decreasing index and the right side by increasing index.
+type Out is Type:
+  Out{cols: Cols, es: Edges}
 
-# How an interval's points run: by increasing or by decreasing index.
-type Walk is Data:
-  Rightward{}
-  Leftward{}
+def points(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, w: Walked, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Out:
+  match count:
+    case 0n:
+      (lefts, l) = lr
+      (rights, r) = rr
+      Walked{xr, yr, es} = w
+      (xs, x) = xr
+      (ys, y) = yr
+      Out{Cols{xs, ys, lefts, rights}, es}
+    case 1n+c:
+      (lefts, +l) = lr
+      (rights, +r) = rr
+      Walked{xr, yr, es} = w
+      (xs, +x) = xr
+      (ys, +y) = yr
+      +i2 = (i + 1 : U32)
+      points(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), left_sweep(g, U32.to_nat(l), dir, k, lo, hi, i, x, y, right_sweep(g, U32.to_nat(r), Array.get(F32, xs, i2), Array.get(F32, ys, i2), k, lo, hi, i, x, y, es)), g, dir, k, lo, hi)
 
-# Whether y beats `by`, the highest point so far, as ts2vg's argmax scans an
-# interval by increasing index and takes a point above the best. That keeps
-# the first highest point, and NaN only as the interval's first point.
-# Walking leftward, an equal later point comes first, and a NaN best gives
-# way. A leftward interval is a left side, whose first point is never NaN:
-# ts2vg would have taken that point as the pivot.
-def above(walk: Walk, +y: F32, +by: F32) -> Bool:
-  match walk:
-    case Rightward{}:
-      F32.is_gt(y, by)
-    case Leftward{}:
-      F32.is_ge(y, by) || is_nan(by)
+def chunks(cs: Chunks, o: Out, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Out:
+  match cs:
+    case CCon{+start, count, next}:
+      Out{cols, es} = o
+      Cols{xs, ys, lefts, rights} = cols
+      chunks(next, points(U32.to_nat(count), start, Array.get(U32, lefts, start), Array.get(U32, rights, start), Walked{Array.get(F32, xs, start), Array.get(F32, ys, start), es}, g, dir, k, lo, hi), g, dir, k, lo, hi)
+    case CNil{}:
+      o
 
-def argmax(+walk: Walk, pts: Pts, +bi: U32, +bx: F32, +by: F32, +bk: U32, +k: U32) -> Pivot:
-  match pts:
-    case PNil{}:
-      Pivot{bi, bx, by, bk}
-    case PCon{i, x, +y, next}:
-      +up = above(walk, y, by)
-      argmax(walk, next, pick_u32(up, i, bi), pick(up, x, bx), pick(up, y, by), pick_u32(up, k, bk), (k + 1 : U32))
+def edges_of(o: Out) -> Edges:
+  Out{cols, es} = o
+  es
 
-# The first k points, reversed, and the points after the (k+1)-th.
-def take_rev(k: Nat, pts: Pts, acc: Pts) -> Pts & Pts:
-  match k pts:
-    case 0n PCon{i, x, y, rest}:
-      (acc, rest)
-    case 1n+q PCon{i, x, y, rest}:
-      take_rev(q, rest, PCon{i, x, y, acc})
-    case _ PNil{}:
-      (acc, PNil{})
+# It forks nothing, so the runtime runs it once the tree has grown, on any
+# idle thread; work done before a fork runs while the tree grows, on a few
+# threads.
+def leaf(cs: Chunks, c: Cols, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Edges:
+  edges_of(chunks(cs, Out{c, ENil{}}, g, dir, k, lo, hi))
 
-# The points left and right of the pivot, each nearest first.
-type Sides is Data:
-  Sides{left: Pts, right: Pts}
+def tree(depth: Nat, h: Halves, cc: Cols & Cols, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Edges:
+  match depth h:
+    case 1n++d Halves{a, +na, b, +nb}:
+      (c1, c2) = cc
+      x y = tree(d, halves(a, na), fork_cols(c1), g, dir, k, lo, hi) tree(d, halves(b, nb), fork_cols(c2), g, dir, k, lo, hi)
+      EJoin{x, y}
+    case _ Halves{a, na, b, nb}:
+      (c1, c2) = cc
+      x y = leaf(a, c1, g, dir, k, lo, hi) leaf(b, c2, g, dir, k, lo, hi)
+      EJoin{x, y}
 
-# The sides of an interval walked in `walk`, from take_rev's cut at its pivot.
-def sides(walk: Walk, parts: Pts & Pts) -> Sides:
-  match walk:
-    case Rightward{}:
-      (before, after) = parts
-      Sides{before, after}
-    case Leftward{}:
-      (before, after) = parts
-      Sides{after, before}
+def split(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, xs: Array<F32>, ys: Array<F32>, c: Cut) -> Edges:
+  Cut{lefts, rights, cs, +m} = c
+  tree(depth(), halves(cs, m), fork_cols(Cols{xs, ys, lefts, rights}), g, dir, k, lo, hi)
 
-# The steps of one interval. Bend has no mutual recursion and matches only
-# parameters and pattern variables, so `go` is one def that runs each step
-# and hands the step's computed result to the next one as a field.
-type Step is Type:
-  Seg{walk: Walk, seg: Pts}
-  Cut{walk: Walk, pv: Pivot, seg: Pts}
-  Parts{pi: U32, px: F32, py: F32, sides: Sides}
-
-# Each step spends one unit of fuel, and an interval of one point takes its
-# three steps too, so 3 per point is enough. argmax only reads `next`, so
-# the points stay unshared.
-def go(fuel: Nat, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, step: Step) -> Edges:
-  match fuel step:
-    case 1n++p Seg{+walk, PCon{+i, +x, +y, +next}}:
-      go(p, g, dir, k, lo, hi, Cut{walk, argmax(walk, next, i, x, y, 0, 1), PCon{i, x, y, next}})
-    case 1n++p Cut{walk, pv, seg}:
-      Pivot{+pi, +px, +py, pk} = pv
-      go(p, g, dir, k, lo, hi, Parts{pi, px, py, sides(walk, take_rev(U32.to_nat(pk), seg, PNil{}))})
-    case 1n++p Parts{+pi, +px, +py, Sides{+left, +right}}:
-      here = right_sweep(g, k, lo, hi, pi, px, py, right, left_sweep(g, dir, k, lo, hi, pi, px, py, left, ENil{}))
-      a b = go(p, g, dir, k, lo, hi, Seg{Leftward{}, left}) go(p, g, dir, k, lo, hi, Seg{Rightward{}, right})
-      EJoin{here, EJoin{a, b}}
-    case _ _:
-      ENil{}
+def built(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, c: Counted) -> Edges:
+  Counted{cols, +visits} = c
+  Cols{xs, ys, lefts, rights} = cols
+  split(g, dir, k, lo, hi, xs, ys, cut(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), 0, 0, target(visits), CNil{}, 0))
 
 # The graph of `n` points. `lo` and `hi` bound the weights, as ts2vg's
 # min_weight and max_weight; pass neg_inf() and inf() for no bound.
-def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, pts: Pts, n: U32) -> Edges:
-  go(Nat.mul(3n, U32.to_nat(n)), g, dir, k, lo, hi, Seg{Rightward{}, pts})
+def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, pts: Pts, +n: U32) -> Edges:
+  built(g, dir, k, lo, hi, n, columns(pts, n))

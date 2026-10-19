@@ -1,67 +1,31 @@
 # The rules bend-vg keeps. F32 arithmetic is opaque to the checker, so the
-# laws state what holds for every F32 word: how the divide and conquer cuts
-# an interval into the two sides of its pivot, and how the penetrable graphs split their
-# sweeps among threads.
+# laws state what holds for every F32 word: how the graphs split their sweeps
+# among threads.
 import Base
 import ./src/graph.bend as G
 import ./src/penetrable.bend as P
 
-def length(pts: G.Pts) -> Nat:
-  match pts:
-    case G.PNil{}:
-      0n
-    case G.PCon{i, x, y, next}:
-      1n+length(next)
+def rev_onto(a: G.Chunks, b: G.Chunks) -> G.Chunks:
+  match a:
+    case G.CNil{}:
+      b
+    case G.CCon{start, count, next}:
+      rev_onto(next, G.CCon{start, count, b})
 
-def append(pts: G.Pts, tail: G.Pts) -> G.Pts:
-  match pts:
-    case G.PNil{}:
-      tail
-    case G.PCon{i, x, y, next}:
-      G.PCon{i, x, y, append(next, tail)}
+def rejoined(h: G.Halves) -> G.Chunks:
+  G.Halves{a, na, b, nb} = h
+  rev_onto(a, b)
 
-# The points `rev` in reverse order, then `fwd`.
-def rev_onto(rev: G.Pts, fwd: G.Pts) -> G.Pts:
-  match rev:
-    case G.PNil{}:
-      fwd
-    case G.PCon{i, x, y, next}:
-      rev_onto(next, G.PCon{i, x, y, fwd})
-
-# LAW: cutting an interval at the position of its pivot gives the points
-# before the pivot, nearest first, and the points after it, in order
-law take_rev_cuts:
-  for +pre  : G.Pts
-  for +i    : U32
-  for +x    : F32
-  for +y    : F32
-  for +post : G.Pts
-  for +acc  : G.Pts
-  {G.take_rev(length(pre), append(pre, G.PCon{i, x, y, post}), acc) == (rev_onto(pre, acc), post) : G.Pts & G.Pts}
-
-# The points of an interval walked in `walk`, in index order.
-def in_order(walk: G.Walk, pts: G.Pts) -> G.Pts:
-  match walk:
-    case G.Rightward{}:
-      pts
-    case G.Leftward{}:
-      rev_onto(pts, G.PNil{})
-
-# The left side in index order, the pivot, then the right side.
-def joined(s: G.Sides, i: U32, x: F32, y: F32) -> G.Pts:
-  G.Sides{left, right} = s
-  append(rev_onto(left, G.PNil{}), G.PCon{i, x, y, right})
-
-# LAW: the two sides of an interval cut at its pivot, with the pivot between
-# them, are the interval's points in index order, whichever way it is walked
-law sides_keep:
-  for +walk  : G.Walk
-  for +pre  : G.Pts
-  for +i    : U32
-  for +x    : F32
-  for +y    : F32
-  for +post : G.Pts
-  {joined(G.sides(walk, G.take_rev(length(pre), append(pre, G.PCon{i, x, y, post}), G.PNil{})), i, x, y) == in_order(walk, append(pre, G.PCon{i, x, y, post})) : G.Pts}
+# LAW: a level of the fork tree halves its chunks without losing or
+# repeating one: the first half, reversed back, then the second half, are
+# the chunks it was given
+law halve_keeps:
+  for +k     : Nat
+  for +cs    : G.Chunks
+  for +na    : U32
+  for +total : U32
+  for +acc   : G.Chunks
+  {rejoined(G.halve(k, cs, na, total, acc)) == rev_onto(acc, cs) : G.Chunks}
 
 # A rope's edges in order, as a chain of ECon.
 def cat(a: G.Edges, b: G.Edges) -> G.Edges:

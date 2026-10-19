@@ -3,9 +3,10 @@
 bend-vg builds the visibility graphs of [ts2vg](https://github.com/CarlosBergillos/ts2vg)
 1.2.4 in [Bend2](https://github.com/bendlang/bend): natural and horizontal,
 undirected or directed, limited penetrable or not, with any of ts2vg's edge
-weights. It runs ts2vg's algorithms with the same operations in the same
-order. The divide and conquer builds the two sides of each split in
-parallel, and the penetrable graphs split their sweeps among threads.
+weights. Its sweeps do ts2vg's operations in the same order. It finds the
+intervals of ts2vg's divide and conquer with one pass over a stack, then
+runs the sweeps of all intervals in parallel. The penetrable graphs split
+their sweeps among threads too.
 
 ## Use it
 
@@ -48,12 +49,11 @@ takes the points and returns the edges, with ts2vg's `min_weight` and
 ## Speed
 
 [docs/benchmark.md](docs/benchmark.md) times bend-vg against ts2vg. On one
-thread, bend-vg beats ts2vg's Cython kernel on the natural graph of a
-random walk of 1,000,000 points, and takes up to 6 times as long on the
-horizontal graphs. The divide and conquer gives more threads little to do:
-1.4 times from 1 to 64 threads at 1,000,000 points. The limited
-penetrable natural graph splits well: at 50,000 points, 64 threads build
-it 7 times faster than ts2vg.
+thread, bend-vg builds every natural graph as fast as ts2vg's Cython kernel
+or faster, and takes about twice as long on the horizontal graphs. With 64
+threads, it builds the graphs of 1,000,000 points 11 to 69 times faster
+than ts2vg's `build`. At 50,000 points, 64 threads build the limited
+penetrable natural graph 7 times faster than ts2vg.
 
 ## Check it
 
@@ -63,9 +63,11 @@ bend PROOF.bend
 uv run pytest -n auto
 ```
 
-`LAWS.bend` states how the divide and conquer cuts an interval around its
-pivot, and that the parallel penetrable build gives the edges of one
-sequential pass; `PROOF.bend` proves both. The tests build `bend_vg` natively and as
+`LAWS.bend` states that each level of the fork tree halves its chunks
+without losing or repeating one, and that the parallel penetrable build
+gives the edges of one sequential pass. `PROOF.bend` proves both. It still
+prints SOME PROOFS FAIL, because the build relies on Base's `@unsafe`
+`Array.fork`. `AGENTS.md` names the defs. The tests build `bend_vg` natively and as
 JavaScript, and compare both, bit for bit, with `tests/reference.py`, a
 float32 copy of ts2vg's kernels. They also compare the native build with
 ts2vg itself: the unweighted edges must be equal, and the weights within

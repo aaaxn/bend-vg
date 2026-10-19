@@ -45,14 +45,40 @@ def bump.set(+i: U32, r: Array<U32> & U32) -> Array<U32>:
 def bump(d: Array<U32>, +i: U32) -> Array<U32>:
   bump.set(i, Array.get(U32, d, i))
 
-def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
+def added(r: Array<U32> & U32) -> Array<U32>:
+  (d, old) = r
+  d
+
+def atomic_bump(d: Array<U32>, +i: U32) -> Array<U32>:
+  added(Array.atomic.add(d, i, 1))
+
+def tally_degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
   match es:
     case G.ENil{}:
       d
     case G.ECon{s, t, w, next}:
-      degrees(next, bump(bump(d, s), t))
+      tally_degrees(next, atomic_bump(atomic_bump(d, s), t))
     case G.EJoin{a, b}:
-      degrees(b, degrees(a, d))
+      tally_degrees(b, tally_degrees(a, d))
+
+# Forks down the build's tree of EJoin into tally_degrees, which forks
+# nothing, so the runtime spreads the tallies over every thread.
+def degrees_tree(depth: Nat, es: G.Edges, dd: Array<U32> & Array<U32>) -> Array<U32>:
+  match depth es:
+    case 1n++p G.EJoin{a, b}:
+      (d1, d2) = dd
+      x y = degrees_tree(p, a, Array.fork(U32, d1)) degrees_tree(p, b, Array.fork(U32, d2))
+      Array.join(U32, x, y)
+    case 0n G.EJoin{a, b}:
+      (d1, d2) = dd
+      x y = tally_degrees(a, d1) tally_degrees(b, d2)
+      Array.join(U32, x, y)
+    case _ _:
+      (d1, d2) = dd
+      tally_degrees(es, Array.join(U32, d1, d2))
+
+def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
+  degrees_tree(G.depth(), es, Array.fork(U32, d))
 
 # The degree sequence, one per line. `r` is the degree array with the
 # degree of node `i`; the `f` nodes below `i` are still to print.

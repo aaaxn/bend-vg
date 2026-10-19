@@ -1,66 +1,19 @@
-# The proofs of LAWS.bend, each by induction on a list of points or on the
-# depth of the split.
+# The proofs of LAWS.bend, each by induction on a list or on the depth of the
+# split.
 import Base
 import ./src/graph.bend as G
 import ./src/penetrable.bend as P
 import ./LAWS.bend as Laws
 
-# Each step moves the first point of `pre` onto `acc`, as rev_onto does.
-def Laws.take_rev_cuts(pre, i, x, y, post, acc):
-  match pre:
-    case G.PNil{}:
+# Each step moves a chunk onto acc, as rev_onto does.
+def Laws.halve_keeps(k, cs, na, total, acc):
+  match k cs:
+    case 1n+q G.CCon{start, count, next}:
+      Laws.halve_keeps(q, next, na, total, G.CCon{start, count, acc})
+    case 1n+q G.CNil{}:
       {==}
-    case G.PCon{j, xj, yj, next}:
-      Laws.take_rev_cuts(next, i, x, y, post, G.PCon{j, xj, yj, acc})
-
-def append_assoc(a: G.Pts, +b: G.Pts, +c: G.Pts) -> {Laws.append(Laws.append(a, b), c) == Laws.append(a, Laws.append(b, c)) : G.Pts}:
-  match a:
-    case G.PNil{}:
+    case 0n _:
       {==}
-    case G.PCon{+i, +x, +y, next}:
-      %append_assoc(next, b, c) : {G.PCon{i, x, y, Laws.append(Laws.append(next, b), c)} == G.PCon{i, x, y, _} : G.Pts}
-      {==}
-
-def rev_rev(a: G.Pts, +acc: G.Pts) -> {Laws.rev_onto(Laws.rev_onto(a, acc), G.PNil{}) == Laws.rev_onto(acc, a) : G.Pts}:
-  match a:
-    case G.PNil{}:
-      {==}
-    case G.PCon{i, x, y, next}:
-      rev_rev(next, G.PCon{i, x, y, acc})
-
-def rev_append(a: G.Pts, +b: G.Pts, +acc: G.Pts) -> {Laws.rev_onto(Laws.append(a, b), acc) == Laws.rev_onto(b, Laws.rev_onto(a, acc)) : G.Pts}:
-  match a:
-    case G.PNil{}:
-      {==}
-    case G.PCon{i, x, y, next}:
-      rev_append(next, b, G.PCon{i, x, y, acc})
-
-def rev_onto_append(l: G.Pts, +m: G.Pts, +acc: G.Pts) -> {Laws.append(Laws.rev_onto(l, m), acc) == Laws.rev_onto(l, Laws.append(m, acc)) : G.Pts}:
-  match l:
-    case G.PNil{}:
-      {==}
-    case G.PCon{i, x, y, next}:
-      rev_onto_append(next, G.PCon{i, x, y, m}, acc)
-
-# take_rev_cuts gives the cut. Walking rightward, the left side is `pre`
-# reversed, so it reverses back to `pre`. Walking leftward, the left side is
-# `post` and the right side is `pre` reversed, and the interval reversed is
-# `post` reversed, the pivot, then `pre` reversed.
-def Laws.sides_keep(walk, pre, i, x, y, post):
-  match walk:
-    case G.Rightward{}:
-      +r = Laws.rev_onto(pre, G.PNil{})
-      cuts = Equal.sym(G.Pts & G.Pts, G.take_rev(Laws.length(pre), Laws.append(pre, G.PCon{i, x, y, post}), G.PNil{}), (r, post), Laws.take_rev_cuts(pre, i, x, y, post, G.PNil{}))
-      %cuts : {Laws.joined(G.sides(G.Rightward{}, _), i, x, y) == Laws.append(pre, G.PCon{i, x, y, post}) : G.Pts}
-      %rev_rev(pre, G.PNil{}) : {Laws.append(Laws.rev_onto(r, G.PNil{}), G.PCon{i, x, y, post}) == Laws.append(_, G.PCon{i, x, y, post}) : G.Pts}
-      {==}
-    case G.Leftward{}:
-      +r = Laws.rev_onto(pre, G.PNil{})
-      cuts = Equal.sym(G.Pts & G.Pts, G.take_rev(Laws.length(pre), Laws.append(pre, G.PCon{i, x, y, post}), G.PNil{}), (r, post), Laws.take_rev_cuts(pre, i, x, y, post, G.PNil{}))
-      +whole = Laws.append(pre, G.PCon{i, x, y, post})
-      %cuts : {Laws.joined(G.sides(G.Leftward{}, _), i, x, y) == Laws.rev_onto(whole, G.PNil{}) : G.Pts}
-      %Equal.sym(G.Pts, Laws.rev_onto(whole, G.PNil{}), Laws.rev_onto(post, G.PCon{i, x, y, r}), rev_append(pre, G.PCon{i, x, y, post}, G.PNil{})) : {Laws.append(Laws.rev_onto(post, G.PNil{}), G.PCon{i, x, y, r}) == _ : G.Pts}
-      rev_onto_append(post, G.PNil{}, G.PCon{i, x, y, r})
 
 def cat_assoc(a: G.Edges, +b: G.Edges, +c: G.Edges) -> {Laws.cat(Laws.cat(a, b), c) == Laws.cat(a, Laws.cat(b, c)) : G.Edges}:
   match a:
