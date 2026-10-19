@@ -29,16 +29,25 @@ of ts2vg's `build`:
 | `-o`, `--output` | a file | standard output |
 | `-x`, `--xs` | a file with the x of each value, one per line, increasing | the index |
 
-`src/graph.bend`, `src/parallel.bend` and `src/penetrable.bend` are the
-library. Each `build` takes the values as an array, which
-`src/series.bend`'s `ys` makes, and their x as `G.Index{}` or `G.At{xs}`,
-and returns the edges, with ts2vg's `min_weight` and `max_weight` as its
-`lo` and `hi`. `src/graph.bend`'s
-`build` runs on one thread. `src/parallel.bend`'s `build` gives the same
-edges on every thread, and its `degrees` counts the degrees there; the
-command line uses these two. Only `src/parallel.bend` relies on Base's `@unsafe`
-`Array.fork`, so `bend --check-only` passes on a program that does not
-import it, such as `tests/one_thread.bend`.
+## Use it from Bend
+
+`src/vg.bend` is the library. `VG.build(o, s)` returns the edges of the
+graph of the series `s` with ts2vg's options `o`:
+
+- `VG.Options{graph, directed, weighted, min_weight, max_weight,
+  penetrable_limit}` holds the options of ts2vg's graph classes, with
+  `G.neg_inf()` and `G.inf()` as no bound; `VG.options(G.Natural{})` gives
+  ts2vg's defaults.
+- `VG.Series{n, ys, xs}` holds `n` values in an array, and their x as
+  `G.Index{}` or `G.At{xs}`. `VG.series(values)` and `VG.series_at(xs,
+  values)` make one from lists.
+
+`VG.build` runs the natural and horizontal graphs on one thread, and splits
+the penetrable ones among every thread. `src/parallel.bend`'s `build` takes
+the same arguments and runs every graph on every thread. Only
+`src/parallel.bend` relies on Base's `@unsafe` `Array.fork`, so `bend
+--check-only` passes on a program that does not import it, such as
+`tests/one_thread.bend`.
 
 ## Where it differs from ts2vg
 

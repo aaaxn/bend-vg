@@ -5,7 +5,7 @@ import Base
 import ../src/graph.bend as G
 import ../src/series.bend as Series
 import ../src/report.bend as Report
-import ../src/penetrable.bend as P
+import ../src/vg.bend as VG
 
 def graph_of(horizontal: Bool) -> G.Graph:
   match horizontal:
@@ -13,13 +13,6 @@ def graph_of(horizontal: Bool) -> G.Graph:
       G.Horizontal{}
     case False{}:
       G.Natural{}
-
-def built(penetrable: Bool, +g: G.Graph, +limit: U32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
-  match penetrable:
-    case True{}:
-      P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, ys, xs, n)
-    case False{}:
-      G.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, xs, n)
 
 # The x of each value: the index, or the values of XS, which must increase.
 def xs_of(x: Maybe<&2, Series.Parsed>, +n: U32) -> G.Xs:
@@ -34,7 +27,7 @@ def edges(+g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed
     case Series.Bad{line}:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
     case Series.Values{rev, +n}:
-      IO.write(Report.edges_text(False{}, built(Bool.not(U32.is_zero(limit)), g, limit, Series.ys(rev, n), xs_of(x, n), n), ""))
+      IO.write(Report.edges_text(False{}, VG.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, Series.ys(rev, n), xs_of(x, n)}), ""))
 
 def limit_of(found: Maybe<&2, U32>) -> U32:
   match found:

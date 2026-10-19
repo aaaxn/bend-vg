@@ -4,7 +4,9 @@
 # atomically.
 import Base
 import ./graph.bend as G
+import ./penetrable.bend as P
 import ./report.bend as Report
+import ./vg.bend as VG
 
 def fork3(a: Array<F32> & Array<F32>, b: Array<U32> & Array<U32>, c: Array<U32> & Array<U32>) -> G.Cols & G.Cols:
   (a1, a2) = a
@@ -153,12 +155,25 @@ def built(+index: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, 
 
 # G.build on every thread: the stack runs on blocks, then the sweeps on
 # chunks of equal work.
-def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
+def visibility(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
   match xs:
     case G.Index{}:
       built(True{}, g, dir, k, lo, hi, ys, G.no_xs(), n)
     case G.At{a}:
       built(False{}, g, dir, k, lo, hi, ys, a, n)
+
+def chosen(is_visibility: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
+  match is_visibility:
+    case True{}:
+      visibility(g, dir, k, lo, hi, ys, xs, n)
+    case False{}:
+      P.build(g, dir, k, lo, hi, limit, ys, xs, n)
+
+# VG.build on every thread.
+def build(o: VG.Options, s: VG.Series) -> G.Edges:
+  VG.Options{g, dir, k, lo, hi, +limit} = o
+  VG.Series{+n, ys, xs} = s
+  chosen(U32.is_zero(limit), g, dir, k, lo, hi, limit, ys, xs, n)
 
 # Forks down the build's tree of EJoin into Report.degrees, which
 # forks nothing, so the runtime spreads the tallies over every thread.

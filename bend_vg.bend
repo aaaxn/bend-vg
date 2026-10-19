@@ -6,7 +6,7 @@ import ./src/graph.bend as G
 import ./src/parallel.bend as Par
 import ./src/series.bend as Series
 import ./src/report.bend as Report
-import ./src/penetrable.bend as Penetrable
+import ./src/vg.bend as VG
 
 type Mode is Data:
   EdgeList{}
@@ -170,12 +170,8 @@ def only_degrees(mode: Mode) -> Bool:
     case _:
       True{}
 
-def graph_of(penetrable: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
-  match penetrable:
-    case True{}:
-      Penetrable.build(g, dir, k, G.neg_inf(), G.inf(), limit, ys, xs, n)
-    case False{}:
-      Par.build(g, dir, k, G.neg_inf(), G.inf(), ys, xs, n)
+def graph_of(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, ys: Array<F32>, xs: G.Xs, +n: U32) -> G.Edges:
+  Par.build(VG.Options{g, dir, k, G.neg_inf(), G.inf(), limit}, VG.Series{n, ys, xs})
 
 # Where x comes from: the index, or the values of the -x file, last first.
 type XSource is Data:
@@ -194,7 +190,7 @@ def report.built(weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.W
     case True{}:
       Err{"Building with 'only_degrees' is only supported for unweighted graphs."}
     case False{}:
-      Ok{output(mode, k, graph_of(Bool.not(U32.is_zero(limit)), g, dir, k, limit, Series.ys(rev, n), xs_of(x, n), n), n)}
+      Ok{output(mode, k, graph_of(g, dir, k, limit, Series.ys(rev, n), xs_of(x, n), n), n)}
 
 # x as the index is an F32, which holds every index below 2^24 exactly.
 def report.sized(too_long: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:

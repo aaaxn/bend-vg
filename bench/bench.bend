@@ -6,7 +6,7 @@
 import Base
 import ../src/graph.bend as G
 import ../src/parallel.bend as Par
-import ../src/penetrable.bend as P
+import ../src/vg.bend as VG
 import ../src/series.bend as Series
 import ../src/report.bend as Report
 
@@ -87,24 +87,17 @@ def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
     timed : Timed <- stamp_edges(es, tally_tree(Par.fork_depth(), es))
     degrees_of(n, t0, timed)
 
-def graph(penetrable: Bool, +g: G.Graph, +limit: U32, ys: Array<F32>, +n: U32) -> G.Edges:
-  match penetrable:
-    case True{}:
-      P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, ys, G.Index{}, n)
-    case False{}:
-      Par.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, G.Index{}, n)
-
-def from_values(penetrable: Bool, +g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>) -> IO(Unit):
+def from_values(+g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>) -> IO(Unit):
   do IO<Unit>:
     t0 : Nat <- IO.now()
-    edges_of(n, t0, graph(penetrable, g, limit, ys, n))
+    edges_of(n, t0, Par.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, ys, G.Index{}}))
 
 def timed(g: G.Graph, +limit: U32, p: Series.Parsed) -> IO(Unit):
   match p:
     case Series.Bad{line}:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
     case Series.Values{rev, +n}:
-      from_values(Bool.not(U32.is_zero(limit)), g, limit, n, Series.ys(rev, n))
+      from_values(g, limit, n, Series.ys(rev, n))
 
 def graph_of(horizontal: Bool) -> G.Graph:
   match horizontal:
