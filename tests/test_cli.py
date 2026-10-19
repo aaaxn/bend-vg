@@ -51,9 +51,12 @@ SERIES = _series()
 
 
 @pytest.fixture(scope="session")
-def builds(tmp_path_factory):
-    # One build for every xdist worker: the first to take the lock builds.
-    out = tmp_path_factory.getbasetemp().parent / "build"
+def builds(tmp_path_factory, worker_id):
+    # One build per run, which every xdist worker shares: the first to take
+    # the lock builds. Without xdist, the parent of the run's directory is
+    # shared by every run, so the build goes in the run's own directory.
+    root = tmp_path_factory.getbasetemp()
+    out = (root if worker_id == "master" else root.parent) / "build"
     out.mkdir(exist_ok=True)
     env = {**os.environ, "BEND_NO_TELEMETRY": "1"}
     with open(out / "lock", "w") as lock:
@@ -177,7 +180,9 @@ def test_weights_match_ts2vg(lanes, inputs, series, kind, weighted):
 def test_rejects_too_many_values(lanes, tmp_path):
     path = tmp_path / "long.txt"
     path.write_text("1\n" * (2**24 + 1))
-    done = subprocess.run([*lanes["native"], str(path)], capture_output=True, text=True)
+    # A constant series is the slowest to build: without the refusal, the
+    # timeout fails the test instead of letting it run for hours.
+    done = subprocess.run([*lanes["native"], str(path)], capture_output=True, text=True, timeout=120)
     assert done.returncode == 1
     assert "at most 16777216 values" in done.stderr
 

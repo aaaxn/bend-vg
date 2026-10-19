@@ -33,7 +33,7 @@ library. Each `build` takes the values as an array, which
 `min_weight` and `max_weight` as its `lo` and `hi`. `src/graph.bend`'s
 `build` runs on one thread. `src/parallel.bend`'s `build` gives the same
 edges on every thread, and its `degrees` counts the degrees there; the
-command line uses both. Only `src/parallel.bend` relies on Base's `@unsafe`
+command line uses these two. Only `src/parallel.bend` relies on Base's `@unsafe`
 `Array.fork`, so `bend --check-only` passes on a program that does not
 import it, such as `tests/one_thread.bend`.
 
