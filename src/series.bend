@@ -2,7 +2,6 @@
 # reads it. Blank lines are skipped. Each value is rounded once, from its
 # decimal text to F32, and its x is its index.
 import Base
-import ./graph.bend as G
 
 type Parsed is Data:
   Values{rev: List<&2, F32>, n: U32}
@@ -25,25 +24,29 @@ def step(s: String, +line: U32, st: Parsed) -> Parsed:
     case Bad{l}:
       Bad{l}
 
-def values(lines: List<&2, String>, +line: U32, st: Parsed) -> Parsed:
-  match lines:
-    case Nil{}:
-      st
-    case Con{s, rest}:
-      values(rest, (line + 1 : U32), step(s, line, st))
+# Base's String.lines recurses once per character, too deep for the JS
+# lane's stack, so this walks the text with tail calls. `h` is the character
+# before `s`, `nl` whether it is a newline, and `cur` the line before `h`,
+# last character first.
+def scan(s: String, nl: Bool, +h: Char, cur: String, +line: U32, st: Parsed) -> Parsed:
+  match s nl:
+    case SNil{} True{}:
+      step(String.reverse(cur), line, st)
+    case SNil{} False{}:
+      step(String.reverse(SCon{h, cur}), line, st)
+    case SCon{+h2, t} True{}:
+      scan(t, Char.is_eq(h2, '\n'), h2, SNil{}, (line + 1 : U32), step(String.reverse(cur), line, st))
+    case SCon{+h2, t} False{}:
+      scan(t, Char.is_eq(h2, '\n'), h2, SCon{h, cur}, line, st)
 
 # The values of `text`, last first, and how many there are; or the first
 # line, counted from 1, that holds no number.
 def parse(text: String) -> Parsed:
-  values(String.lines(text), 1, Values{Nil{}, 0})
-
-# The points of the values `rev`, last first, whose last index is `i`.
-def points(rev: List<&2, F32>, +i: U32, acc: G.Pts) -> G.Pts:
-  match rev:
-    case Nil{}:
-      acc
-    case Con{y, rest}:
-      points(rest, (i - 1 : U32), G.PCon{i, U32.to_f32(i), y, acc})
+  match text:
+    case SNil{}:
+      Values{Nil{}, 0}
+    case SCon{+h, t}:
+      scan(t, Char.is_eq(h, '\n'), h, SNil{}, 1, Values{Nil{}, 0})
 
 def column(rev: List<&2, F32>, +i: U32, ys: Array<F32>) -> Array<F32>:
   match rev:

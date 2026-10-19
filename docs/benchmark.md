@@ -5,8 +5,7 @@ on float32 series with a seed of 0. ts2vg's `build` makes the edge list
 and the degrees, and `only_degrees` skips the list. bend-vg's time covers
 the edges, a walk over them, and the degrees, from `bench/bench.bend`.
 Each time is the best of 5 runs, in ms, with the series already in memory:
-for ts2vg as a numpy array, for bend-vg as an `Array<F32>`, or as a list of
-points for the penetrable graphs.
+for ts2vg as a numpy array, for bend-vg as an `Array<F32>`.
 
 The machine is an AMD Ryzen Threadripper 7970X (32 cores, 64 threads),
 with Bend 2.0.37 and ts2vg 1.2.4 on Python 3.12. Other jobs held a load of

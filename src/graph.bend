@@ -3,11 +3,6 @@
 # the same order as the twin does in float64.
 import Base
 
-# The points of a series, in order: the node index, x and y.
-type Pts is Data:
-  PNil{}
-  PCon{i: U32, x: F32, y: F32, next: Pts}
-
 type Graph is Data:
   Natural{}
   Horizontal{}
@@ -38,20 +33,18 @@ type Edges is Data:
   ECon{src: U32, dst: U32, w: F32, next: Edges}
   EJoin{a: Edges, b: Edges}
 
-# F32 words
-
-def from_bits(word: U32) -> F32:
-  U32{bits} = word
-  F32{bits}
+# F32 constants, from divisions by zero: the JS lane builds an F32 from its
+# bits with two typed arrays, too slow for a sweep that passes NaN at every
+# point it visits.
 
 def nan() -> F32:
-  from_bits(2143289344)
+  F32.div(0.0, 0.0)
 
 def inf() -> F32:
-  from_bits(2139095040)
+  F32.div(1.0, 0.0)
 
 def neg_inf() -> F32:
-  from_bits(4286578688)
+  F32.div(F32.neg(1.0), 0.0)
 
 def is_nan(+a: F32) -> Bool:
   F32.is_ne(a, a)

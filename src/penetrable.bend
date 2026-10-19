@@ -5,19 +5,22 @@
 import Base
 import ./graph.bend as G
 
-# The points, in a list of their own: the parallel ranges share it, and Bend
-# seals the fields of every node it builds of a type that is shared anywhere
-# in the program, which would slow the divide and conquer's G.Pts.
+# The points, in a list the parallel ranges share.
 type Pts is Data:
   PNil{}
   PCon{i: U32, x: F32, y: F32, next: Pts}
 
-def own(pts: G.Pts) -> Pts:
-  match pts:
-    case G.PNil{}:
-      PNil{}
-    case G.PCon{i, x, y, next}:
-      PCon{i, x, y, own(next)}
+# The points of `ys` from index `i` down to 0, onto `acc`; `yr` holds y at
+# `i`. The last read, at index -1, wraps around.
+def points(count: Nat, +i: U32, yr: Array<F32> & F32, acc: Pts) -> Pts:
+  match count:
+    case 0n:
+      (ys, y) = yr
+      acc
+    case 1n+c:
+      (ys, +y) = yr
+      +i2 = (i - 1 : U32)
+      points(c, i2, Array.get(F32, ys, i2), PCon{i, U32.to_f32(i), y, acc})
 
 # The `limit + 1` largest slopes (or heights) a sweep has accepted, as ts2vg's
 # max_slopes; the sweep accepts a point above the smallest of them.
@@ -219,6 +222,8 @@ def split(depth: Nat, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +h
       a b = split(d, g, dir, k, lo, hi, limit, pts, len, c1u, c1) split(d, g, dir, k, lo, hi, limit, drop(c1, pts), (len - c1u : U32), (cu - c1u : U32), Nat.sub(count, c1))
       G.EJoin{a, b}
 
-# The limited penetrable graph of `n` points, crossing at most `limit`.
-def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, pts: G.Pts, +n: U32) -> G.Edges:
-  split(7n, g, dir, k, lo, hi, U32.to_nat(limit), own(pts), n, n, U32.to_nat(n))
+# The limited penetrable graph of the `n` values `ys`, each at its index,
+# crossing at most `limit` points. x is the index as an F32, exact for up
+# to 2^24 values.
+def build(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, +limit: U32, ys: Array<F32>, +n: U32) -> G.Edges:
+  split(7n, g, dir, k, lo, hi, U32.to_nat(limit), points(U32.to_nat(n), (n - 1 : U32), Array.get(F32, ys, (n - 1 : U32)), PNil{}), n, n, U32.to_nat(n))

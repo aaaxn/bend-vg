@@ -16,7 +16,6 @@ import reference
 ROOT = Path(__file__).resolve().parents[1]
 BEND = os.environ.get("BEND", str(Path.home() / ".bend/bin/bend"))
 BUN = shutil.which("bun") or str(Path.home() / ".bun/bin/bun")
-JS_MAX_POINTS = 1000
 GRAPHS = {"natural": NaturalVG, "horizontal": HorizontalVG}
 DIRECTIONS = [None, "left_to_right", "top_to_bottom"]
 
@@ -126,7 +125,7 @@ CASES = [(s, k, d, w) for s in SERIES for k in GRAPHS for d in DIRECTIONS for w 
 @pytest.mark.parametrize(("series", "kind", "directed", "weighted"), CASES)
 def test_edges_match_reference(lanes, inputs, series, kind, directed, weighted):
     want = expected(series, kind, directed, weighted)
-    for lane in ["native", "js"] if len(SERIES[series]) <= JS_MAX_POINTS else ["native"]:
+    for lane in ["native", "js"]:
         got = parse_edges(run(lanes[lane], inputs[series], *options(kind, directed, weighted)))
         assert got == want, lane
 
@@ -196,3 +195,39 @@ def test_penetrable_edges_match_ts2vg(lanes, inputs, series, kind, limit):
     text = run(lanes["native"], inputs[series], *options(kind, None, "num_penetrations"), "-p", str(limit))
     got = sorted((int(s), int(t), float(w)) for s, t, w in (line.split() for line in text.splitlines()))
     assert got == sorted((s, t, w) for s, t, w in g.edges)
+
+
+# Long series: the JS lane's stack overflows on a recursion about as deep as
+# the series.
+
+LONG = {
+    "white_noise_long": np.random.default_rng(0).standard_normal(100_000).astype(np.float32),
+    "random_walk_long": np.cumsum(np.random.default_rng(0).standard_normal(100_000)).astype(np.float32),
+}
+LONG_RUNS = [
+    ("white_noise_long", ["-t", "natural"]),
+    ("white_noise_long", ["-t", "horizontal", "-d", "top_to_bottom", "-w", "slope"]),
+    ("white_noise_long", ["-t", "natural", "-p", "2"]),
+    ("random_walk_long", ["-t", "natural", "-w", "distance"]),
+    ("random_walk_long", ["-t", "horizontal"]),
+    ("random_walk_long", ["-t", "horizontal", "-p", "2"]),
+    ("random_walk_long", ["-t", "natural", "-m", "ds"]),
+    ("random_walk_long", ["-t", "horizontal", "-m", "dd"]),
+]
+
+
+@pytest.fixture(scope="session")
+def long_inputs(tmp_path_factory):
+    out = tmp_path_factory.mktemp("long")
+    for name, ts in LONG.items():
+        (out / f"{name}.txt").write_text("".join(np.format_float_positional(v, unique=True) + "\n" for v in ts))
+    return {name: out / f"{name}.txt" for name in LONG}
+
+
+@pytest.mark.parametrize(("series", "args"), LONG_RUNS)
+def test_js_lane_matches_native_on_long_series(lanes, long_inputs, series, args):
+    native, js = (run(lanes[lane], long_inputs[series], *args) for lane in ["native", "js"])
+    if "-m" in args:
+        assert js.split() == native.split()
+    else:
+        assert parse_edges(js) == parse_edges(native)

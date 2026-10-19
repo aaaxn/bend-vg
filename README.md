@@ -28,9 +28,9 @@ ts2vg's command line, with the input first:
 | `-o`, `--output` | a file | standard output |
 
 `src/graph.bend` and `src/penetrable.bend` are the library. Their `build`
+takes the values as an array, which `src/series.bend`'s `ys` makes, and
 returns the edges, with ts2vg's `min_weight` and `max_weight` as its `lo`
-and `hi`. `G.build` takes the values as an array, and `src/series.bend`'s
-`ys` makes it; the penetrable `build` takes the points.
+and `hi`.
 
 ## Where it differs from ts2vg
 
@@ -72,4 +72,5 @@ prints SOME PROOFS FAIL, because the build relies on Base's `@unsafe`
 JavaScript, and compare both, bit for bit, with `tests/reference.py`, a
 float32 copy of ts2vg's kernels. They also compare the native build with
 ts2vg itself: the unweighted edges must be equal, and the weights within
-1e-6 relative.
+1e-6 relative. On series of 100,000 values, they compare the JavaScript
+build with the native one.
