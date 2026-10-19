@@ -44,6 +44,9 @@ import it, such as `tests/one_thread.bend`.
   its unweighted edges equal ts2vg's on every test series. The two can
   differ where three points are nearly collinear, since F32 slopes carry 24
   bits.
+- F32 holds every index below 2^24 exactly, so the command line refuses a
+  series of more than 16,777,216 values. The library's `build` does not
+  check.
 - Rounding a float64 series to F32 can tie values that differ in float64.
   For a series with a large offset, such as `1000 + 0.01 * noise`, subtract
   the offset before writing the file: neither graph changes under a shift.

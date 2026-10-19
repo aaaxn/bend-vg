@@ -180,12 +180,20 @@ def report.built(weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.W
     case False{}:
       Ok{output(mode, k, graph_of(Bool.not(U32.is_zero(limit)), g, dir, k, limit, Series.ys(rev, n), n), n)}
 
+# x is the index as an F32, which holds every index below 2^24 exactly.
+def report.sized(too_long: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
+  match too_long:
+    case True{}:
+      Err{"bend_vg takes at most 16777216 values, since x is the index as an F32"}
+    case False{}:
+      report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, n)
+
 def report(p: Series.Parsed, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode) -> Outcome:
   match p:
     case Series.Bad{line}:
       Err{"line " ++ U32.show(line) ++ " holds no number"}
     case Series.Values{rev, +n}:
-      report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, n)
+      report.sized(U32.is_gt(n, 16777216), g, dir, k, limit, mode, rev, n)
 
 # Files
 

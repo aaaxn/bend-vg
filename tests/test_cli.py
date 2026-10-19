@@ -174,6 +174,14 @@ def test_weights_match_ts2vg(lanes, inputs, series, kind, weighted):
     np.testing.assert_allclose([e[2] for e in got], [e[2] for e in want], rtol=1e-6, atol=0)
 
 
+def test_rejects_too_many_values(lanes, tmp_path):
+    path = tmp_path / "long.txt"
+    path.write_text("1\n" * (2**24 + 1))
+    done = subprocess.run([*lanes["native"], str(path)], capture_output=True, text=True)
+    assert done.returncode == 1
+    assert "at most 16777216 values" in done.stderr
+
+
 def test_rejects_weighted_degrees(lanes, inputs):
     done = subprocess.run([*lanes["native"], str(inputs["sample"]), "-w", "distance", "-m", "ds"], capture_output=True, text=True)
     assert done.returncode == 1
