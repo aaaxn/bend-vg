@@ -33,6 +33,8 @@ def _series():
         "flat": [1.0, 1.0, 1.0, 1.0],
         "nans": [np.nan, 2.0, np.nan, 1.0, 3.0, np.nan, 3.0, 0.5, np.nan],
         "noise_nans": np.where(np.arange(300) % 7 == 3, np.nan, np.random.default_rng(1).standard_normal(300)),
+        "nan_runs": np.where(np.arange(400) // 50 % 3 == 1, np.nan, np.random.default_rng(2).standard_normal(400)),
+        "all_nans": np.full(200, np.nan),
         "white_noise": np.random.default_rng(0).standard_normal(1000),
         "brownian": np.cumsum(np.random.default_rng(0).standard_normal(1000)),
         "linear_small": [9999 + k / 10 for k in range(11)],

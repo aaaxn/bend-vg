@@ -4,9 +4,9 @@ bend-vg builds the visibility graphs of [ts2vg](https://github.com/CarlosBergill
 1.2.4 in [Bend2](https://github.com/bendlang/bend): natural and horizontal,
 undirected or directed, limited penetrable or not, with any of ts2vg's edge
 weights. Its sweeps do ts2vg's operations in the same order. It finds the
-intervals of ts2vg's divide and conquer with one pass over a stack, then
-runs the sweeps of all intervals in parallel. The penetrable graphs split
-their sweeps among threads too.
+intervals of ts2vg's divide and conquer with a stack over each block of
+points, in parallel, then runs the sweeps of all intervals in parallel.
+The penetrable graphs split their sweeps among threads too.
 
 ## Use it
 
@@ -27,9 +27,10 @@ ts2vg's command line, with the input first:
 | `-m`, `--outputmode` | `el` edge list, `ds` degree sequence, `dd` degree distribution, `dc` degree counts | `el` |
 | `-o`, `--output` | a file | standard output |
 
-`src/graph.bend` and `src/penetrable.bend` are the library: their `build`
-takes the points and returns the edges, with ts2vg's `min_weight` and
-`max_weight` as its `lo` and `hi`.
+`src/graph.bend` and `src/penetrable.bend` are the library. Their `build`
+returns the edges, with ts2vg's `min_weight` and `max_weight` as its `lo`
+and `hi`. `G.build` takes the values as an array, and `src/series.bend`'s
+`ys` makes it; the penetrable `build` takes the points.
 
 ## Where it differs from ts2vg
 
@@ -51,7 +52,7 @@ takes the points and returns the edges, with ts2vg's `min_weight` and
 [docs/benchmark.md](docs/benchmark.md) times bend-vg against ts2vg. On one
 thread, bend-vg builds every natural graph as fast as ts2vg's Cython kernel
 or faster, and takes about twice as long on the horizontal graphs. With 64
-threads, it builds the graphs of 1,000,000 points 11 to 69 times faster
+threads, it builds the graphs of 1,000,000 points 17 to 75 times faster
 than ts2vg's `build`. At 50,000 points, 64 threads build the limited
 penetrable natural graph 7 times faster than ts2vg.
 

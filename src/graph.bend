@@ -221,32 +221,188 @@ def flush(st: Stack, +n: U32, rights: Array<U32>, +visits: F32) -> Array<U32> & 
 
 # lefts and rights count the points each point's left and right sweeps visit.
 type Cols is Type:
-  Cols{xs: Array<F32>, ys: Array<F32>, lefts: Array<U32>, rights: Array<U32>}
+  Cols{ys: Array<F32>, lefts: Array<U32>, rights: Array<U32>}
 
-type Counted is Type:
-  Counted{cols: Cols, visits: F32}
+def fork3(a: Array<F32> & Array<F32>, b: Array<U32> & Array<U32>, c: Array<U32> & Array<U32>) -> Cols & Cols:
+  (a1, a2) = a
+  (b1, b2) = b
+  (c1, c2) = c
+  (Cols{a1, b1, c1}, Cols{a2, b2, c2})
 
-def counted(xs: Array<F32>, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Counted:
-  (rights, visits) = r
-  Counted{Cols{xs, ys, lefts, rights}, visits}
+def fork_cols(c: Cols) -> Cols & Cols:
+  Cols{ys, lefts, rights} = c
+  fork3(Array.fork(F32, ys), Array.fork(U32, lefts), Array.fork(U32, rights))
 
-def pass(pts: Pts, +i: U32, +x: F32, +y: F32, popped: Popped, xs: Array<F32>, ys: Array<F32>, lefts: Array<U32>) -> Counted:
-  match pts popped:
-    case PCon{+i2, +x2, +y2, next} Popped{+first, +below, st, rights, +visits}:
-      +k = key(y, below)
+type Arrived is Type:
+  OpensWithNaN{rights: Array<U32>, visits: F32}
+  PopsAll{rights: Array<U32>, visits: F32}
+  Bounded{first: U32, below: F32, st: Stack, rights: Array<U32>, visits: F32}
+
+def lpops(rest: Stack, beat: Bool, +y: F32, +i: U32, +j: U32, +kj: F32, rights: Array<U32>, +visits: F32) -> Arrived:
+  match rest beat:
+    case KCon{+j2, +k2, rest2} True{}:
+      +r = (i - 1 - j : U32)
+      lpops(rest2, F32.is_gt(y, k2), y, i, j2, k2, Array.set(U32, rights, j, r), F32.add(visits, U32.to_f32(r)))
+    case KNil{} True{}:
+      +r = (i - 1 - j : U32)
+      PopsAll{Array.set(U32, rights, j, r), F32.add(visits, U32.to_f32(r))}
+    case _ False{}:
+      Bounded{(j + 1 : U32), kj, KCon{j, kj, rest}, rights, visits}
+
+def arrive(st: Stack, nan: Bool, +y: F32, +i: U32, rights: Array<U32>, +visits: F32) -> Arrived:
+  match st nan:
+    case KNil{} True{}:
+      OpensWithNaN{rights, visits}
+    case KNil{} False{}:
+      PopsAll{rights, visits}
+    case KCon{+j, +kj, rest} True{}:
+      Bounded{(j + 1 : U32), kj, KCon{j, kj, rest}, rights, visits}
+    case KCon{+j, +kj, rest} False{}:
+      lpops(rest, F32.is_gt(y, kj), y, i, j, kj, rights, visits)
+
+# Latest first.
+type Unbounded is Data:
+  UNil{}
+  UCon{i: U32, y: F32, next: Unbounded}
+
+type Block is Data:
+  Block{start: U32, opening_nans: U32, unbounded: Unbounded, st: Stack, visits: F32}
+
+type Blocks is Data:
+  BOne{b: Block}
+  BJoin{a: Blocks, b: Blocks}
+
+type Local is Type:
+  Local{b: Block, c: Cols}
+
+def local(count: Nat, +i: U32, +y: F32, a: Arrived, yr: Array<F32> & F32, lefts: Array<U32>, +start: U32, +opening_nans: U32, unbounded: Unbounded) -> Local:
+  match count a:
+    case 1n+c OpensWithNaN{rights, +visits}:
+      (ys, +y2) = yr
+      +i2 = (i + 1 : U32)
+      local(c, i2, y2, arrive(KNil{}, is_nan(y2), y2, i2, rights, F32.add(visits, 1.0)), Array.get(F32, ys, (i2 + 1 : U32)), Array.set(U32, lefts, i, 0), start, (opening_nans + 1 : U32), unbounded)
+    case 1n+c PopsAll{rights, +visits}:
+      (ys, +y2) = yr
+      +i2 = (i + 1 : U32)
+      local(c, i2, y2, arrive(KCon{i, y, KNil{}}, is_nan(y2), y2, i2, rights, visits), Array.get(F32, ys, (i2 + 1 : U32)), lefts, start, opening_nans, UCon{i, y, unbounded})
+    case 1n+c Bounded{+first, +below, st, rights, +visits}:
+      (ys, +y2) = yr
+      +i2 = (i + 1 : U32)
       +l = (i - first : U32)
-      pass(next, i2, x2, y2, pops(st, F32.is_gt(y2, k), y2, i2, i, k, rights, F32.add(visits, U32.to_f32((l + 1 : U32)))), Array.set(F32, xs, i, x), Array.set(F32, ys, i, y), Array.set(U32, lefts, i, l))
-    case PNil{} Popped{+first, +below, st, rights, +visits}:
+      local(c, i2, y2, arrive(KCon{i, key(y, below), st}, is_nan(y2), y2, i2, rights, F32.add(visits, U32.to_f32((l + 1 : U32)))), Array.get(F32, ys, (i2 + 1 : U32)), Array.set(U32, lefts, i, l), start, opening_nans, unbounded)
+    case 0n OpensWithNaN{rights, +visits}:
+      (ys, y2) = yr
+      Local{Block{start, (opening_nans + 1 : U32), unbounded, KNil{}, F32.add(visits, 1.0)}, Cols{ys, Array.set(U32, lefts, i, 0), rights}}
+    case 0n PopsAll{rights, +visits}:
+      (ys, y2) = yr
+      Local{Block{start, opening_nans, UCon{i, y, unbounded}, KCon{i, y, KNil{}}, visits}, Cols{ys, lefts, rights}}
+    case 0n Bounded{+first, +below, st, rights, +visits}:
+      (ys, y2) = yr
       +l = (i - first : U32)
-      counted(Array.set(F32, xs, i, x), Array.set(F32, ys, i, y), Array.set(U32, lefts, i, l), flush(KCon{i, key(y, below), st}, (i + 1 : U32), rights, F32.add(visits, U32.to_f32((l + 1 : U32)))))
+      Local{Block{start, opening_nans, unbounded, KCon{i, key(y, below), st}, F32.add(visits, U32.to_f32((l + 1 : U32)))}, Cols{ys, Array.set(U32, lefts, i, l), rights}}
 
-def columns(pts: Pts, +n: U32) -> Counted:
-  match pts:
-    case PCon{+i, +x, +y, next}:
-      +d = Nat.add(1n, U32.log2(n))
-      pass(next, i, x, y, Popped{0, inf(), KNil{}, Array.new(U32, d, 0), 0.0}, Array.new(F32, d, 0.0), Array.new(F32, d, 0.0), Array.new(U32, d, 0))
-    case PNil{}:
-      Counted{Cols{Array.new(F32, 0n, 0.0), Array.new(F32, 0n, 0.0), Array.new(U32, 0n, 0), Array.new(U32, 0n, 0)}, 0.0}
+def block_pass(count: Nat, +s: U32, yr: Array<F32> & F32, lefts: Array<U32>, rights: Array<U32>) -> Local:
+  match count:
+    case 0n:
+      (ys, y) = yr
+      Local{Block{s, 0, UNil{}, KNil{}, 0.0}, Cols{ys, lefts, rights}}
+    case 1n+c:
+      (ys, +y) = yr
+      local(c, s, y, arrive(KNil{}, is_nan(y), y, s, rights, 0.0), Array.get(F32, ys, (s + 1 : U32)), lefts, s, 0, UNil{})
+
+def block_of(l: Local) -> Blocks:
+  Local{b, c} = l
+  BOne{b}
+
+# It forks nothing, so the runtime runs it once the tree has grown, on any
+# idle thread; work done before a fork runs while the tree grows, on a few
+# threads.
+def block_leaf(+s: U32, +e: U32, c: Cols) -> Blocks:
+  Cols{ys, lefts, rights} = c
+  block_of(block_pass(U32.to_nat((e - s : U32)), s, Array.get(F32, ys, s), lefts, rights))
+
+def block_tree(depth: Nat, +s: U32, +e: U32, cc: Cols & Cols) -> Blocks:
+  match depth:
+    case 1n++d:
+      (c1, c2) = cc
+      +mid = (s + U32.shr((e - s : U32)) : U32)
+      x y = block_tree(d, s, mid, fork_cols(c1)) block_tree(d, mid, e, fork_cols(c2))
+      BJoin{x, y}
+    case 0n:
+      (c1, c2) = cc
+      +mid = (s + U32.shr((e - s : U32)) : U32)
+      x y = block_leaf(s, mid, c1) block_leaf(mid, e, c2)
+      BJoin{x, y}
+
+type Merged is Type:
+  Merged{st: Stack, lefts: Array<U32>, rights: Array<U32>, visits: F32}
+
+def push_with_key(count: Nat, +i: U32, +k: F32, st: Stack) -> Stack:
+  match count:
+    case 0n:
+      st
+    case 1n+c:
+      push_with_key(c, (i + 1 : U32), k, KCon{i, k, st})
+
+def push_opening_nans(count: Nat, +i: U32, st: Stack) -> Stack:
+  match st:
+    case KCon{+j, +kj, rest}:
+      push_with_key(count, i, kj, KCon{j, kj, rest})
+    case KNil{}:
+      push_with_key(count, i, inf(), KNil{})
+
+def pops_from(st: Stack, +y: F32, +i: U32, rights: Array<U32>, +visits: F32) -> Popped:
+  match st:
+    case KCon{+j, +kj, rest}:
+      pops(rest, F32.is_gt(y, kj), y, i, j, kj, rights, visits)
+    case KNil{}:
+      Popped{0, inf(), KNil{}, rights, visits}
+
+def set_left(+i: U32, lefts: Array<U32>, p: Popped) -> Merged:
+  Popped{+first, below, st, rights, +visits} = p
+  +l = (i - first : U32)
+  Merged{st, Array.set(U32, lefts, i, l), rights, F32.add(visits, U32.to_f32((l + 1 : U32)))}
+
+def in_order(u: Unbounded, acc: Unbounded) -> Unbounded:
+  match u:
+    case UNil{}:
+      acc
+    case UCon{i, y, next}:
+      in_order(next, UCon{i, y, acc})
+
+def bound_unbounded(u: Unbounded, m: Merged) -> Merged:
+  match u:
+    case UNil{}:
+      m
+    case UCon{+i, +y, next}:
+      Merged{st, lefts, rights, +visits} = m
+      bound_unbounded(next, set_left(i, lefts, pops_from(st, y, i, rights, visits)))
+
+def onto(st: Stack, acc: Stack) -> Stack:
+  match st:
+    case KNil{}:
+      acc
+    case KCon{j, k, rest}:
+      onto(rest, KCon{j, k, acc})
+
+def push_block_stack(st: Stack, m: Merged) -> Merged:
+  Merged{g, lefts, rights, visits} = m
+  Merged{onto(onto(st, KNil{}), g), lefts, rights, visits}
+
+def merge_block(b: Block, m: Merged) -> Merged:
+  Block{+start, +opening_nans, unbounded, st, +visits} = b
+  Merged{g, lefts, rights, +v} = m
+  push_block_stack(st, bound_unbounded(in_order(unbounded, UNil{}), Merged{push_opening_nans(U32.to_nat(opening_nans), start, g), lefts, rights, F32.add(v, visits)}))
+
+# The merge replays the stack over every point before each block. The points
+# the block's own stack could not bound pop it in order; the others sit on
+# the block's stack, which goes on top.
+def merge(bs: Blocks, m: Merged) -> Merged:
+  match bs:
+    case BOne{b}:
+      merge_block(b, m)
+    case BJoin{a, b}:
+      merge(b, merge(a, m))
 
 type Chunks is Data:
   CNil{}
@@ -277,13 +433,16 @@ def cut(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, +start:
       +i2 = (i + 1 : U32)
       cut(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), pick_u32(full, i2, start), pick_u32(full, 0, w), target, close(full, start, i2, cs), pick_u32(full, (m + 1 : U32), m))
 
-# The levels of the fork tree.
-def depth() -> Nat:
+def fork_depth() -> Nat:
   8n
+
+# At most 512 blocks, and at least 32 points in each unless n is below 64.
+def block_depth(+n: U32) -> Nat:
+  Nat.min(fork_depth(), U32.log2(U32.shrn(n, 6n)))
 
 # About two chunks for each of the tree's leaves.
 def target(+visits: F32) -> U32:
-  U32.max(1, F32.to_u32(F32.div(visits, U32.to_f32(U32.shln(4, depth())))))
+  U32.max(1, F32.to_u32(F32.div(visits, U32.to_f32(U32.shln(4, fork_depth())))))
 
 type Halves is Data:
   Halves{a: Chunks, na: U32, b: Chunks, nb: U32}
@@ -298,92 +457,74 @@ def halve(k: Nat, cs: Chunks, +na: U32, +total: U32, acc: Chunks) -> Halves:
 def halves(cs: Chunks, +m: U32) -> Halves:
   halve(U32.to_nat(U32.shr(m)), cs, U32.shr(m), m, CNil{})
 
-def fork4(a: Array<F32> & Array<F32>, b: Array<F32> & Array<F32>, c: Array<U32> & Array<U32>, d: Array<U32> & Array<U32>) -> Cols & Cols:
-  (a1, a2) = a
-  (b1, b2) = b
-  (c1, c2) = c
-  (d1, d2) = d
-  (Cols{a1, b1, c1, d1}, Cols{a2, b2, c2, d2})
-
-def fork_cols(c: Cols) -> Cols & Cols:
-  Cols{xs, ys, lefts, rights} = c
-  fork4(Array.fork(F32, xs), Array.fork(F32, ys), Array.fork(U32, lefts), Array.fork(U32, rights))
-
 # Bend matches only parameters, so a read's result must arrive as one: a
-# sweep reads x and y at `ahead`, where the next sweep starts, and hands them
-# over.
+# sweep reads y at `ahead`, where the next sweep starts, and hands it over.
 type Walked is Type:
-  Walked{xr: Array<F32> & F32, yr: Array<F32> & F32, es: Edges}
+  Walked{yr: Array<F32> & F32, es: Edges}
 
-def natural_right(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def natural_right(count: Nat, +j: U32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
-      (xs, xb) = xr
       (ys, yb) = yr
-      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+      Walked{Array.get(F32, ys, ahead), es}
     case 1n+c:
-      (xs, +xb) = xr
       (ys, +yb) = yr
+      +xb = U32.to_f32(j)
       +s = F32.div(F32.sub(yb, ya), F32.sub(xb, xa))
       +seen = clears(F32.is_gt(s, best), s, best, scale_a, xb, yb)
       +j2 = (j + 1 : U32)
-      natural_right(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, s, es), ahead)
+      natural_right(c, j2, Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, s, es), ahead)
 
-def natural_left(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def natural_left(count: Nat, +j: U32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +scale_a: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
-      (xs, xb) = xr
       (ys, yb) = yr
-      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+      Walked{Array.get(F32, ys, ahead), es}
     case 1n+c:
-      (xs, +xb) = xr
       (ys, +yb) = yr
+      +xb = U32.to_f32(j)
       +s = F32.div(F32.sub(yb, ya), F32.neg(F32.sub(xb, xa)))
       +seen = clears(F32.is_gt(s, best), s, best, scale_a, xb, yb)
       +j2 = (j - 1 : U32)
-      natural_left(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, F32.neg(s), es), ahead)
+      natural_left(c, j2, Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, scale_a, pick(seen, s, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, F32.neg(s), es), ahead)
 
-def horizontal_right(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def horizontal_right(count: Nat, +j: U32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
-      (xs, xb) = xr
       (ys, yb) = yr
-      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+      Walked{Array.get(F32, ys, ahead), es}
     case 1n+c:
-      (xs, xb) = xr
       (ys, +yb) = yr
       +seen = F32.is_gt(yb, best)
       +j2 = (j + 1 : U32)
-      horizontal_right(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_right(seen, k, lo, hi, ia, j, xa, xb, ya, yb, nan(), es), ahead)
+      horizontal_right(c, j2, Array.get(F32, ys, j2), k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_right(seen, k, lo, hi, ia, j, xa, U32.to_f32(j), ya, yb, nan(), es), ahead)
 
-def horizontal_left(count: Nat, +j: U32, xr: Array<F32> & F32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
+def horizontal_left(count: Nat, +j: U32, yr: Array<F32> & F32, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, +best: F32, es: Edges, +ahead: U32) -> Walked:
   match count:
     case 0n:
-      (xs, xb) = xr
       (ys, yb) = yr
-      Walked{Array.get(F32, xs, ahead), Array.get(F32, ys, ahead), es}
+      Walked{Array.get(F32, ys, ahead), es}
     case 1n+c:
-      (xs, xb) = xr
       (ys, +yb) = yr
       +seen = F32.is_gt(yb, best)
       +j2 = (j - 1 : U32)
-      horizontal_left(c, j2, Array.get(F32, xs, j2), Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_left(seen, dir, k, lo, hi, ia, j, xa, xb, ya, yb, nan(), es), ahead)
+      horizontal_left(c, j2, Array.get(F32, ys, j2), dir, k, lo, hi, ia, xa, ya, pick(seen, yb, best), add_left(seen, dir, k, lo, hi, ia, j, xa, U32.to_f32(j), ya, yb, nan(), es), ahead)
 
-def right_sweep(g: Graph, count: Nat, xr: Array<F32> & F32, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, es: Edges) -> Walked:
+def right_sweep(g: Graph, count: Nat, yr: Array<F32> & F32, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, es: Edges) -> Walked:
   match g:
     case Natural{}:
-      natural_right(count, (ia + 1 : U32), xr, yr, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia - 1 : U32))
+      natural_right(count, (ia + 1 : U32), yr, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia - 1 : U32))
     case Horizontal{}:
-      horizontal_right(count, (ia + 1 : U32), xr, yr, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia - 1 : U32))
+      horizontal_right(count, (ia + 1 : U32), yr, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia - 1 : U32))
 
 def left_sweep(g: Graph, count: Nat, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +ia: U32, +xa: F32, +ya: F32, w: Walked) -> Walked:
   match g:
     case Natural{}:
-      Walked{xr, yr, es} = w
-      natural_left(count, (ia - 1 : U32), xr, yr, dir, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia + 1 : U32))
+      Walked{yr, es} = w
+      natural_left(count, (ia - 1 : U32), yr, dir, k, lo, hi, ia, xa, ya, scale(xa, ya), neg_inf(), es, (ia + 1 : U32))
     case Horizontal{}:
-      Walked{xr, yr, es} = w
-      horizontal_left(count, (ia - 1 : U32), xr, yr, dir, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia + 1 : U32))
+      Walked{yr, es} = w
+      horizontal_left(count, (ia - 1 : U32), yr, dir, k, lo, hi, ia, xa, ya, neg_inf(), es, (ia + 1 : U32))
 
 type Out is Type:
   Out{cols: Cols, es: Edges}
@@ -393,25 +534,24 @@ def points(count: Nat, +i: U32, lr: Array<U32> & U32, rr: Array<U32> & U32, w: W
     case 0n:
       (lefts, l) = lr
       (rights, r) = rr
-      Walked{xr, yr, es} = w
-      (xs, x) = xr
+      Walked{yr, es} = w
       (ys, y) = yr
-      Out{Cols{xs, ys, lefts, rights}, es}
+      Out{Cols{ys, lefts, rights}, es}
     case 1n+c:
       (lefts, +l) = lr
       (rights, +r) = rr
-      Walked{xr, yr, es} = w
-      (xs, +x) = xr
+      Walked{yr, es} = w
       (ys, +y) = yr
+      +x = U32.to_f32(i)
       +i2 = (i + 1 : U32)
-      points(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), left_sweep(g, U32.to_nat(l), dir, k, lo, hi, i, x, y, right_sweep(g, U32.to_nat(r), Array.get(F32, xs, i2), Array.get(F32, ys, i2), k, lo, hi, i, x, y, es)), g, dir, k, lo, hi)
+      points(c, i2, Array.get(U32, lefts, i2), Array.get(U32, rights, i2), left_sweep(g, U32.to_nat(l), dir, k, lo, hi, i, x, y, right_sweep(g, U32.to_nat(r), Array.get(F32, ys, i2), k, lo, hi, i, x, y, es)), g, dir, k, lo, hi)
 
 def chunks(cs: Chunks, o: Out, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Out:
   match cs:
     case CCon{+start, count, next}:
       Out{cols, es} = o
-      Cols{xs, ys, lefts, rights} = cols
-      chunks(next, points(U32.to_nat(count), start, Array.get(U32, lefts, start), Array.get(U32, rights, start), Walked{Array.get(F32, xs, start), Array.get(F32, ys, start), es}, g, dir, k, lo, hi), g, dir, k, lo, hi)
+      Cols{ys, lefts, rights} = cols
+      chunks(next, points(U32.to_nat(count), start, Array.get(U32, lefts, start), Array.get(U32, rights, start), Walked{Array.get(F32, ys, start), es}, g, dir, k, lo, hi), g, dir, k, lo, hi)
     case CNil{}:
       o
 
@@ -419,9 +559,6 @@ def edges_of(o: Out) -> Edges:
   Out{cols, es} = o
   es
 
-# It forks nothing, so the runtime runs it once the tree has grown, on any
-# idle thread; work done before a fork runs while the tree grows, on a few
-# threads.
 def leaf(cs: Chunks, c: Cols, +g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32) -> Edges:
   edges_of(chunks(cs, Out{c, ENil{}}, g, dir, k, lo, hi))
 
@@ -436,16 +573,25 @@ def tree(depth: Nat, h: Halves, cc: Cols & Cols, +g: Graph, +dir: Direction, +k:
       x y = leaf(a, c1, g, dir, k, lo, hi) leaf(b, c2, g, dir, k, lo, hi)
       EJoin{x, y}
 
-def split(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, xs: Array<F32>, ys: Array<F32>, c: Cut) -> Edges:
+def split(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, c: Cut) -> Edges:
   Cut{lefts, rights, cs, +m} = c
-  tree(depth(), halves(cs, m), fork_cols(Cols{xs, ys, lefts, rights}), g, dir, k, lo, hi)
+  tree(fork_depth(), halves(cs, m), fork_cols(Cols{ys, lefts, rights}), g, dir, k, lo, hi)
 
-def built(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, c: Counted) -> Edges:
-  Counted{cols, +visits} = c
-  Cols{xs, ys, lefts, rights} = cols
-  split(g, dir, k, lo, hi, xs, ys, cut(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), 0, 0, target(visits), CNil{}, 0))
+def cut_all(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, lefts: Array<U32>, r: Array<U32> & F32) -> Edges:
+  (rights, +visits) = r
+  split(g, dir, k, lo, hi, ys, cut(U32.to_nat(n), 0, Array.get(U32, lefts, 0), Array.get(U32, rights, 0), 0, 0, target(visits), CNil{}, 0))
 
-# The graph of `n` points. `lo` and `hi` bound the weights, as ts2vg's
-# min_weight and max_weight; pass neg_inf() and inf() for no bound.
-def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, pts: Pts, +n: U32) -> Edges:
-  built(g, dir, k, lo, hi, n, columns(pts, n))
+def merged(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, ys: Array<F32>, m: Merged) -> Edges:
+  Merged{st, lefts, rights, +visits} = m
+  cut_all(g, dir, k, lo, hi, n, ys, lefts, flush(st, n, rights, visits))
+
+def passed(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, +n: U32, cc: Cols & Cols) -> Edges:
+  (c1, c2) = cc
+  Cols{ys, lefts, rights} = c2
+  merged(g, dir, k, lo, hi, n, ys, merge(block_tree(block_depth(n), 0, n, fork_cols(c1)), Merged{KNil{}, lefts, rights, 0.0}))
+
+# The graph of the `n` values `ys`, each at its index. `lo` and `hi` bound
+# the weights, as ts2vg's min_weight and max_weight; pass neg_inf() and
+# inf() for no bound.
+def build(+g: Graph, +dir: Direction, +k: Weight, +lo: F32, +hi: F32, ys: Array<F32>, +n: U32) -> Edges:
+  passed(g, dir, k, lo, hi, n, fork_cols(Cols{ys, Array.new(U32, Nat.add(1n, U32.log2(n)), 0), Array.new(U32, Nat.add(1n, U32.log2(n)), 0)}))

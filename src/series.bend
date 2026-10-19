@@ -44,3 +44,14 @@ def points(rev: List<&2, F32>, +i: U32, acc: G.Pts) -> G.Pts:
       acc
     case Con{y, rest}:
       points(rest, (i - 1 : U32), G.PCon{i, U32.to_f32(i), y, acc})
+
+def column(rev: List<&2, F32>, +i: U32, ys: Array<F32>) -> Array<F32>:
+  match rev:
+    case Nil{}:
+      ys
+    case Con{y, rest}:
+      column(rest, (i - 1 : U32), Array.set(F32, ys, i, y))
+
+# The `n` values `rev`, last first, as an array indexed from 0.
+def ys(rev: List<&2, F32>, +n: U32) -> Array<F32>:
+  column(rev, (n - 1 : U32), Array.new(F32, Nat.add(1n, U32.log2(n)), 0.0))

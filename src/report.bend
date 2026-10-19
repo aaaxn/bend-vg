@@ -78,7 +78,7 @@ def degrees_tree(depth: Nat, es: G.Edges, dd: Array<U32> & Array<U32>) -> Array<
       tally_degrees(es, Array.join(U32, d1, d2))
 
 def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
-  degrees_tree(G.depth(), es, Array.fork(U32, d))
+  degrees_tree(G.fork_depth(), es, Array.fork(U32, d))
 
 # The degree sequence, one per line. `r` is the degree array with the
 # degree of node `i`; the `f` nodes below `i` are still to print.

@@ -83,25 +83,32 @@ def degrees_of(+n: U32, +t0: Nat, timed: Timed) -> IO(Unit):
 
 def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
   do IO<Unit>:
-    timed : Timed <- stamp_edges(es, tally_tree(G.depth(), es))
+    timed : Timed <- stamp_edges(es, tally_tree(G.fork_depth(), es))
     degrees_of(n, t0, timed)
 
-def built(penetrable: Bool, +g: G.Graph, +limit: U32, pts: G.Pts, +n: U32) -> G.Edges:
+def from_points(+g: G.Graph, +limit: U32, +n: U32, pts: G.Pts) -> IO(Unit):
+  do IO<Unit>:
+    t0 : Nat <- IO.now()
+    edges_of(n, t0, P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, pts, n))
+
+def from_values(+g: G.Graph, +n: U32, ys: Array<F32>) -> IO(Unit):
+  do IO<Unit>:
+    t0 : Nat <- IO.now()
+    edges_of(n, t0, G.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), ys, n))
+
+def built(penetrable: Bool, +g: G.Graph, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
   match penetrable:
     case True{}:
-      P.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit, pts, n)
+      from_points(g, limit, n, Series.points(rev, (n - 1 : U32), G.PNil{}))
     case False{}:
-      G.build(g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), pts, n)
+      from_values(g, n, Series.ys(rev, n))
 
 def timed(g: G.Graph, +limit: U32, p: Series.Parsed) -> IO(Unit):
   match p:
     case Series.Bad{line}:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
     case Series.Values{rev, +n}:
-      +pts = Series.points(rev, (n - 1 : U32), G.PNil{})
-      do IO<Unit>:
-        t0 : Nat <- IO.now()
-        edges_of(n, t0, built(Bool.not(U32.is_zero(limit)), g, limit, pts, n))
+      built(Bool.not(U32.is_zero(limit)), g, limit, rev, n)
 
 def graph_of(horizontal: Bool) -> G.Graph:
   match horizontal:

@@ -4,7 +4,9 @@
 on float32 series with a seed of 0. ts2vg's `build` makes the edge list
 and the degrees, and `only_degrees` skips the list. bend-vg's time covers
 the edges, a walk over them, and the degrees, from `bench/bench.bend`.
-Each time is the best of 5 runs, in ms, with the series already in memory.
+Each time is the best of 5 runs, in ms, with the series already in memory:
+for ts2vg as a numpy array, for bend-vg as an `Array<F32>`, or as a list of
+points for the penetrable graphs.
 
 The machine is an AMD Ryzen Threadripper 7970X (32 cores, 64 threads),
 with Bend 2.0.37 and ts2vg 1.2.4 on Python 3.12. Other jobs held a load of
@@ -17,17 +19,17 @@ about 4 during the runs.
 | graph | series | n | edges (ts2vg / bend-vg if they differ) | ts2vg build | ts2vg only_degrees | bend-vg 1T | bend-vg 8T | bend-vg 64T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | natural | white_noise | 10,000 | 29,322 | 3 | 1 | 1 | 1 | 3 |
-| natural | white_noise | 100,000 | 294,835 | 49 | 12 | 11 | 6 | 6 |
-| natural | white_noise | 1,000,000 | 2,951,201 | 569 | 148 | 128 | 42 | 31 |
-| natural | random_walk | 10,000 | 103,708 | 18 | 10 | 6 | 2 | 4 |
-| natural | random_walk | 100,000 | 1,062,543 / 1,062,541 | 285 | 153 | 74 | 18 | 10 |
-| natural | random_walk | 1,000,000 | 12,752,617 / 12,752,619 | 7408 | 5357 | 2149 | 320 | 107 |
-| horizontal | white_noise | 10,000 | 19,979 | 2 | 0 | 1 | 1 | 3 |
-| horizontal | white_noise | 100,000 | 199,974 | 24 | 5 | 9 | 5 | 6 |
-| horizontal | white_noise | 1,000,000 | 1,999,970 | 333 | 56 | 107 | 40 | 30 |
-| horizontal | random_walk | 10,000 | 19,843 | 3 | 2 | 4 | 1 | 3 |
-| horizontal | random_walk | 100,000 | 199,323 | 58 | 38 | 69 | 14 | 7 |
-| horizontal | random_walk | 1,000,000 | 1,997,907 | 1620 | 1336 | 2530 | 378 | 77 |
+| natural | white_noise | 100,000 | 294,835 | 50 | 13 | 13 | 6 | 6 |
+| natural | white_noise | 1,000,000 | 2,951,201 | 577 | 140 | 129 | 39 | 22 |
+| natural | random_walk | 10,000 | 103,708 | 18 | 9 | 6 | 3 | 4 |
+| natural | random_walk | 100,000 | 1,062,543 / 1,062,541 | 294 | 140 | 74 | 20 | 10 |
+| natural | random_walk | 1,000,000 | 12,752,617 / 12,752,619 | 7200 | 5271 | 2114 | 320 | 96 |
+| horizontal | white_noise | 10,000 | 19,979 | 1 | 0 | 1 | 1 | 3 |
+| horizontal | white_noise | 100,000 | 199,974 | 23 | 5 | 10 | 4 | 5 |
+| horizontal | white_noise | 1,000,000 | 1,999,970 | 333 | 57 | 112 | 31 | 20 |
+| horizontal | random_walk | 10,000 | 19,843 | 3 | 2 | 5 | 2 | 3 |
+| horizontal | random_walk | 100,000 | 199,323 | 55 | 36 | 71 | 14 | 6 |
+| horizontal | random_walk | 1,000,000 | 1,997,907 | 1609 | 1320 | 2621 | 373 | 65 |
 
 On one thread, bend-vg builds every natural graph as fast as ts2vg's
 Cython kernel (`only_degrees`) or faster: 2.5 times faster on the random
@@ -35,9 +37,9 @@ walk of 1,000,000 points. It takes about twice as long as the kernel on the
 horizontal graphs from 100,000 points, whose sweep does only a comparison
 per point.
 
-With 64 threads, bend-vg builds the graphs of 1,000,000 points 11 to 69
-times faster than ts2vg's `build`: 31 ms against 569 for the natural graph
-of white noise, and 107 ms against 7408 for that of the random walk. At
+With 64 threads, bend-vg builds the graphs of 1,000,000 points 17 to 75
+times faster than ts2vg's `build`: 22 ms against 577 for the natural graph
+of white noise, and 96 ms against 7200 for that of the random walk. At
 10,000 points, 64 threads take longer than 8.
 
 ## How the build splits
@@ -47,25 +49,36 @@ pivot, sweeps the interval from it, and recurses on the two sides. Every
 point is the pivot of one interval. The interval starts after the nearest
 earlier point that the pivot does not beat, and ends before the nearest
 later point that beats it. bend-vg finds these bounds for every point with
-one pass over a stack. After that pass, no sweep waits on another.
+a stack. After that, no sweep waits on another.
 
-bend-vg cuts the points into about 1,024 chunks of equal work, where the
-work counts the points that the sweeps visit. A fork tree of 512 leaves
-runs the chunks. The leaves read x and y from arrays that they share
-through Base's `Array.fork`. Base marks `Array.fork` `@unsafe` because two
-handles can write the same cells. The leaves only read.
+The stack runs on blocks of about 2,000 points in parallel, each block with
+a stack of its own points. A point that pops its block's whole stack, and a
+NaN that opens a block, need the points before the block. A merge walks the
+blocks in order with the stack of all the earlier points and bounds those
+points. White noise leaves a few of them in each block. A rising series
+leaves every point to the merge, which then does the work of one stack on
+one thread.
 
-The stack pass runs on one thread and takes 16 ms at 1,000,000 points,
-about half of the white noise's 31 ms on 64 threads. It is the largest
-serial part left. The sweeps scale up to the 32 cores, and the second
-thread of each core adds little.
+bend-vg then cuts the points into about 1,024 chunks of equal work, where
+the work counts the points that the sweeps visit. A fork tree of 512
+leaves runs the chunks. The blocks and the leaves share the arrays of y and
+of the counts through Base's `Array.fork`, and x is the index. Base marks
+`Array.fork` `@unsafe` because two handles can write the same cell. Here no
+two tasks write the same cell.
+
+On 64 threads, at 1,000,000 points of white noise, the blocks and the
+merge take 3 to 4 ms of the 22. Another 3 to 4 ms go to allocating the two
+arrays of counts, on one thread. On one thread, the blocks cost about 5 ms
+more than one stack over the whole series. The sweeps scale up to the 32
+cores, and the second thread of each core adds little.
 
 Bend's runtime first grows the fork tree on a few threads, then spreads
 the tasks of defs that fork nothing over every thread. Work that a task
 does before it forks runs while the tree grows. A first version swept in
 the tree's last fork. It kept 8 of 64 threads busy, and its edges of the
-random walk of 1,000,000 points took 337 ms instead of 133. So `leaf` forks nothing, and
-`Report.degrees` walks the edges the same way, with atomic adds.
+random walk of 1,000,000 points took 337 ms instead of 133. So `leaf` and
+`block_leaf` fork nothing, and `Report.degrees` walks the edges the same
+way, with atomic adds.
 
 ## The limited penetrable graphs
 

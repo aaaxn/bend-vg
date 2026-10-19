@@ -165,19 +165,19 @@ def only_degrees(mode: Mode) -> Bool:
     case _:
       True{}
 
-def graph_of(penetrable: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, pts: G.Pts, +n: U32) -> G.Edges:
+def graph_of(penetrable: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, rev: List<&2, F32>, +n: U32) -> G.Edges:
   match penetrable:
     case True{}:
-      Penetrable.build(g, dir, k, G.neg_inf(), G.inf(), limit, pts, n)
+      Penetrable.build(g, dir, k, G.neg_inf(), G.inf(), limit, Series.points(rev, (n - 1 : U32), G.PNil{}), n)
     case False{}:
-      G.build(g, dir, k, G.neg_inf(), G.inf(), pts, n)
+      G.build(g, dir, k, G.neg_inf(), G.inf(), Series.ys(rev, n), n)
 
 def report.built(weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
   match weighted_degrees:
     case True{}:
       Err{"Building with 'only_degrees' is only supported for unweighted graphs."}
     case False{}:
-      Ok{output(mode, k, graph_of(Bool.not(U32.is_zero(limit)), g, dir, k, limit, Series.points(rev, (n - 1 : U32), G.PNil{}), n), n)}
+      Ok{output(mode, k, graph_of(Bool.not(U32.is_zero(limit)), g, dir, k, limit, rev, n), n)}
 
 def report(p: Series.Parsed, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode) -> Outcome:
   match p:
