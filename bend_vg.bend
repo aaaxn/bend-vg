@@ -157,11 +157,11 @@ def output(mode: Mode, +k: G.Weight, es: G.Edges, +n: U32) -> String:
     case EdgeList{}:
       Report.edges_text(Report.is_weighted(k), es, "")
     case DegreeSequence{}:
-      Report.degree_sequence(n, Par.degrees(es, Report.slots(n)))
+      Report.degree_sequence(n, Par.degrees(es, n))
     case DegreeDistribution{}:
-      Report.degree_counts(True{}, n, Par.degrees(es, Report.slots(n)))
+      Report.degree_counts(True{}, n, Par.degrees(es, n))
     case DegreeCounts{}:
-      Report.degree_counts(False{}, n, Par.degrees(es, Report.slots(n)))
+      Report.degree_counts(False{}, n, Par.degrees(es, n))
 
 def only_degrees(mode: Mode) -> Bool:
   match mode:

@@ -79,7 +79,7 @@ def report(+n: U32, +t0: Nat, +t1: Nat, done: Tally & Nat) -> IO(Unit):
 def degrees_of(+n: U32, +t0: Nat, timed: Timed) -> IO(Unit):
   Timed{es, t, +t1} = timed
   do IO<Unit>:
-    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Par.degrees(es, Report.slots(n)), 0), 0)))
+    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Par.degrees(es, n), 0), 0)))
     report(n, t0, t1, done)
 
 def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):

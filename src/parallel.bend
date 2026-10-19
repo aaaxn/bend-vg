@@ -191,6 +191,6 @@ def degrees_tree(depth: Nat, es: G.Edges, dd: Array<U32> & Array<U32>) -> Array<
       (d1, d2) = dd
       Report.degrees(es, Array.join(U32, d1, d2))
 
-# Report.degrees on every thread.
-def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
-  degrees_tree(fork_depth(), es, Array.fork(U32, d))
+# VG.degrees on every thread.
+def degrees(es: G.Edges, +n: U32) -> Array<U32>:
+  degrees_tree(fork_depth(), es, Array.fork(U32, Report.slots(n)))

@@ -42,12 +42,29 @@ graph of the series `s` with ts2vg's options `o`:
   `G.Index{}` or `G.At{xs}`. `VG.series(values)` and `VG.series_at(xs,
   values)` make one from lists.
 
+Three defs read the edges: `VG.fold(~A, ~f, es, acc)` folds the template
+`f(acc, src, dst, w)` over them, `VG.degrees(es, n)` gives ts2vg's degrees
+as an array, and `VG.adjacency(directed, es, n)` gives the graph as
+compressed rows, each in increasing order. This program prints 4, the
+number of edges:
+
+```python
+import Base
+import ./src/graph.bend as G
+import ./src/vg.bend as VG
+
+def main() -> IO(Unit):
+  do IO<Unit>:
+    es : G.Edges = VG.build(VG.options(G.Natural{}), VG.series([3.0, 4.0, 2.0, 1.0]))
+    IO.print(U32.show(VG.fold(~U32, ~(m => s => t => w => (m + 1 : U32)), es, 0)))
+```
+
 `VG.build` runs the natural and horizontal graphs on one thread, and splits
-the penetrable ones among every thread. `src/parallel.bend`'s `build` takes
-the same arguments and runs every graph on every thread. Only
+the penetrable ones among every thread. `src/parallel.bend`'s `build` and
+`degrees` take the same arguments and run on every thread. Only
 `src/parallel.bend` relies on Base's `@unsafe` `Array.fork`, so `bend
 --check-only` passes on a program that does not import it, such as
-`tests/one_thread.bend`.
+`tests/one_thread.bend` and `tests/library.bend`.
 
 ## Where it differs from ts2vg
 
@@ -92,9 +109,9 @@ without losing or repeating one, and that the parallel penetrable build
 gives the edges of one sequential pass. `PROOF.bend` proves both. It still
 prints SOME PROOFS FAIL, because `src/parallel.bend` relies on Base's
 `@unsafe` `Array.fork`. `AGENTS.md` names the defs. The tests build
-`bend_vg` and `tests/one_thread.bend` natively and as JavaScript, and
-compare both, bit for bit, with `tests/reference.py`, a float32 copy of
-ts2vg's kernels. They also compare the native build with ts2vg itself: the
+`bend_vg`, `tests/one_thread.bend` and `tests/library.bend` natively and
+as JavaScript, and compare them, bit for bit, with `tests/reference.py`, a
+float32 copy of ts2vg's kernels. They also compare the native build with ts2vg itself: the
 unweighted edges must be equal, and the weights within 1e-6 relative. On
 series of 100,000 values, they compare the JavaScript build with the
 native one.

@@ -62,7 +62,7 @@ def builds(tmp_path_factory, worker_id):
     with open(out / "lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not (out / "done").exists():
-            for source, target in [("bend_vg.bend", "bend_vg"), ("tests/one_thread.bend", "one_thread")]:
+            for source, target in [("bend_vg.bend", "bend_vg"), ("tests/one_thread.bend", "one_thread"), ("tests/library.bend", "library")]:
                 for suffix in ["", ".js"]:
                     subprocess.run([BEND, source, "-o", str(out / (target + suffix))], cwd=ROOT, env=env, check=True)
             (out / "done").touch()
@@ -77,6 +77,11 @@ def lanes(builds):
 @pytest.fixture(scope="session")
 def one_thread(builds):
     return {"native": [str(builds / "one_thread")], "js": [BUN, str(builds / "one_thread.js")]}
+
+
+@pytest.fixture(scope="session")
+def library(builds):
+    return {"native": [str(builds / "library")], "js": [BUN, str(builds / "library.js")]}
 
 
 @pytest.fixture(scope="session")
@@ -293,9 +298,10 @@ def test_xs_rejects_bad_coordinates(lanes, inputs, tmp_path, xs, error):
 # The one-thread build, which a program can use without relying on @unsafe.
 
 
-def test_one_thread_checks_clean():
+@pytest.mark.parametrize("driver", ["tests/one_thread.bend", "tests/library.bend"])
+def test_safe_drivers_check_clean(driver):
     env = {**os.environ, "BEND_NO_TELEMETRY": "1"}
-    done = subprocess.run([BEND, "tests/one_thread.bend", "--check-only"], cwd=ROOT, env=env, capture_output=True, text=True)
+    done = subprocess.run([BEND, driver, "--check-only"], cwd=ROOT, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "ALL PROOFS CHECK" in done.stdout
 
@@ -324,6 +330,37 @@ def test_one_thread_xs_edges_match_reference(one_thread, inputs, xs_inputs, kind
     want = sorted((s, t, None) for s, t, _ in edges)
     for lane in ["native", "js"]:
         assert parse_edges(run(one_thread[lane], inputs["noise_nans"], kind, str(limit), xs_inputs["noise_nans", "spread"])) == want, lane
+
+
+# What the library reads off the edges: a fold, the degrees, the rows.
+
+
+def rows(edges, n, directed):
+    out = [[] for _ in range(n)]
+    for s, t, w in edges:
+        out[s].append((t, bits(w)))
+        if not directed:
+            out[t].append((s, bits(w)))
+    return [sorted(r) for r in out]
+
+
+@pytest.mark.parametrize(("series", "kind", "directed"), [(s, k, d) for s in SERIES for k in GRAPHS for d in DIRECTIONS])
+def test_library_outputs_match_ts2vg(library, inputs, series, kind, directed):
+    ts = SERIES[series]
+    n = len(ts)
+    g = GRAPHS[kind](directed=directed).build(ts.astype(np.float64))
+    want_rows = rows(reference_edges(series, kind, directed, "distance"), n, directed)
+    for lane in ["native", "js"]:
+        lines = dict(line.split(" ", 1) if " " in line else (line, "") for line in run(library[lane], inputs[series], kind, directed or "undirected").splitlines())
+        m, ends = map(int, lines["f"].split())
+        assert m == len(g.edges), lane
+        assert ends == sum(s + t for s, t in g.edges) % 2**32, lane
+        assert [int(d) for d in lines["d"].split()] == list(g.degrees), lane
+        offsets = [int(o) for o in lines["o"].split()]
+        targets = [int(t) for t in lines["t"].split()]
+        weights = [bits(w) for w in lines["w"].split()]
+        got_rows = [list(zip(targets[a:b], weights[a:b])) for a, b in zip(offsets, offsets[1:])]
+        assert got_rows == want_rows, lane
 
 
 # Long series: the JS lane's stack overflows on a recursion about as deep as
