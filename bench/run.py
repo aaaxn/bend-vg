@@ -1,13 +1,13 @@
-"""Times bend-vg's build against ts2vg's on the same float32 series.
+"""Times bend-visgraph's build against ts2vg's on the same float32 series.
 
     uv run python bench/run.py [--sizes 10000 100000 1000000] [--threads 1 8 64] [--limit 0] [--xs]
 
 ts2vg's `build` makes the edge list and the degrees; `only_degrees` skips
-the list. bend-vg's time is `bench/bench.bend`: the edges, a walk over them,
-then the degrees. `--limit` above 0 times the limited penetrable graphs,
-and `--xs` gives the points irregular x, as ts2vg's `build(ts, xs)`.
-Every time is the best of `--repeats` runs, in ms, with
-the series already in memory.
+the list. bend-visgraph's time is `bench/bench.bend`: the edges, a walk over
+them, then the degrees. `--limit` above 0 times the limited penetrable
+graphs, and `--xs` gives the points irregular x, as ts2vg's `build(ts, xs)`.
+Every time is the best of `--repeats` runs, in ms, with the series already
+in memory.
 """
 
 import argparse
@@ -53,8 +53,8 @@ def main():
         env = {**os.environ, "BEND_NO_TELEMETRY": "1"}
         subprocess.run([BEND, "bench/bench.bend", "-o", str(work / "bench")], cwd=ROOT, env=env, check=True)
 
-        bend_cols = " | ".join(f"bend-vg {t}T" for t in args.threads)
-        print(f"| graph | series | n | edges (ts2vg / bend-vg if they differ) | ts2vg build | ts2vg only_degrees | {bend_cols} |")
+        bend_cols = " | ".join(f"bend-visgraph {t}T" for t in args.threads)
+        print(f"| graph | series | n | edges (ts2vg / bend-visgraph if they differ) | ts2vg build | ts2vg only_degrees | {bend_cols} |")
         print("|" + " --- |" * (6 + len(args.threads)))
         for kind, graph in GRAPHS.items():
             for name, make in SERIES.items():

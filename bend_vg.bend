@@ -1,6 +1,6 @@
 # ts2vg's visibility graphs of time series, in Bend2, on every CPU thread.
 #
-# bend-vg's command line takes ts2vg's options with the input first:
+# bend-visgraph's command line takes ts2vg's options with the input first:
 #   bend_vg INPUT [-o OUTPUT] [-x XS] [-t TYPE] [-d DIRECTED] [-w WEIGHTED] [-p LIMIT] [-m MODE]
 # where XS, which ts2vg's command line lacks, holds the x of each value.
 import Base

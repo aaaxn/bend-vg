@@ -1,6 +1,6 @@
-# The rules bend-vg keeps. F32 arithmetic is opaque to the checker, so the
-# laws state what holds for every F32 word: how the graphs split their sweeps
-# among threads.
+# The rules bend-visgraph keeps. F32 arithmetic is opaque to the checker, so
+# the laws state what holds for every F32 word: how the graphs split their
+# sweeps among threads.
 import Base
 import ./src/graph.bend as G
 import ./src/parallel.bend as Par
