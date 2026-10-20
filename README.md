@@ -112,11 +112,11 @@ bend-vg finds every stretch before any sweep starts, so no sweep waits for
 another.
 
 A stack finds the stretches. It runs on blocks of values in parallel, each
-block with a stack of its own values. Two kinds of stretch can reach past a
-block: the stretch of a value higher than every earlier value of its block,
-and the stretch of a value still on the stack at the block's end. A merge
-walks the blocks in order and closes them. bend-vg then cuts the values into chunks
-of equal work, where the work of a value counts the values its sweeps
+block with a stack of its own values. Three kinds of stretch can reach past
+a block: that of a value higher than every earlier value of its block, that
+of a NaN that opens the block, and that of a value still on the stack at the
+block's end. A merge walks the blocks in order and closes them. bend-vg then
+cuts the values into chunks of equal work, where the work of a value counts the values its sweeps
 visit, and a fork tree of 512 leaves runs the chunks. On 1,000,000 values
 there are 512 blocks and about 1,024 chunks.
 [How the build splits](docs/benchmark.md#how-the-build-splits) says where
@@ -136,12 +136,15 @@ equal count for the horizontal one.
 On one thread, bend-vg builds every natural graph as fast as ts2vg's
 Cython kernel (`only_degrees`) or faster: 2.5 times faster on the random
 walk of 1,000,000 values. It takes about twice as long as the kernel on the
-horizontal graphs, whose sweep does only a comparison per value. With 64
+horizontal graphs of 100,000 values and more, whose sweep does only a
+comparison per value. With 64
 threads, bend-vg builds the graphs of 1,000,000 values 17 to 76 times faster
 than ts2vg's `build`. The limited penetrable natural graph takes about 13%
 less time than ts2vg's kernel on one thread, and 64 threads build it 42 times
-faster at 50,000 values. Small series gain little: at 10,000 values, 64
-threads take longer than 8. [docs/benchmark.md](docs/benchmark.md) has
+faster at 50,000 values. A penetrable horizontal sweep stops early, so that
+graph has little work to split, and ts2vg's kernel stays faster on it.
+Small series gain little: on the natural and horizontal graphs of 10,000
+values, 64 threads take longer than 8. [docs/benchmark.md](docs/benchmark.md) has
 every time, the irregular x runs, and the machine.
 
 ## Its edges are ts2vg's
@@ -150,8 +153,8 @@ The tests compare bend-vg with ts2vg. On every test series, its unweighted
 edges equal ts2vg's, and its weights lie within 1e-6 relative.
 `bench/compare.py` compares the large graphs of the benchmark: 24 of its 28
 graphs are equal edge for edge. In the other 4, a few edges differ where
-three values are nearly collinear, and each of those edges is in the
-graph: each tool misses edges that the other finds.
+three values are nearly collinear, and every edge that only one tool has is
+in the graph.
 
 ## Where it differs from ts2vg
 
