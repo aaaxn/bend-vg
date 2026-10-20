@@ -2,3 +2,5 @@
 .venv/
 __pycache__/
 /build/
+/bend_vg
+/bend_vg.js

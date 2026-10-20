@@ -92,52 +92,76 @@ def from_values(+g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>, xs: G.Xs) -> 
     t0 : Nat <- IO.now()
     edges_of(n, t0, Par.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, ys, xs}))
 
-# The x of each value: the index, or the values of XS.
-def xs_of(x: Maybe<&2, Series.Parsed>, +n: U32) -> G.Xs:
-  match x:
-    case Some{Series.Values{rev, m}}:
-      G.At{Series.ys(rev, n)}
-    case _:
-      G.Index{}
-
-def timed(g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
-  match p:
-    case Series.Bad{line}:
-      IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
-    case Series.Values{rev, +n}:
-      from_values(g, limit, n, Series.ys(rev, n), xs_of(x, n))
-
-def graph_of(horizontal: Bool) -> G.Graph:
-  match horizontal:
+# x as the index is an F32, which holds every index below 2^24 exactly.
+def from_index(too_long: Bool, +g: G.Graph, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
+  match too_long:
     case True{}:
-      G.Horizontal{}
+      IO.die(Unit, 1, "bench takes at most 16777216 values, since x is the index as an F32")
     case False{}:
-      G.Natural{}
+      from_values(g, limit, n, Series.ys(rev, n), G.Index{})
 
-def limit_of(found: Maybe<&2, U32>) -> U32:
-  match found:
-    case Some{l}:
-      l
+def from_xs(x: Series.XsCheck, +g: G.Graph, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
+  match x:
+    case Series.XsBad{msg}:
+      IO.die(Unit, 1, msg)
+    case Series.XsOk{xrev}:
+      from_values(g, limit, n, Series.ys(rev, n), G.At{Series.ys(xrev, n)})
+
+def timed(+g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
+  match p x:
+    case Series.Bad{line} _:
+      IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
+    case Series.Values{rev, +n} None{}:
+      from_index(U32.is_gt(n, 16777216), g, limit, rev, n)
+    case Series.Values{rev, +n} Some{xp}:
+      from_xs(Series.xs(xp, n), g, limit, rev, n)
+
+def usage() -> String:
+  "usage: bench INPUT natural|horizontal [LIMIT [XS]]"
+
+def graph_of(natural: Bool, horizontal: Bool) -> Maybe<&2, G.Graph>:
+  match natural horizontal:
+    case True{} _:
+      Some{G.Natural{}}
+    case False{} True{}:
+      Some{G.Horizontal{}}
+    case False{} False{}:
+      None{}
+
+def graph_named(+kind: String) -> Maybe<&2, G.Graph>:
+  graph_of(String.eq(kind, "natural"), String.eq(kind, "horizontal"))
+
+def read_xs(path: Maybe<&2, String>) -> IO(Maybe<&2, Series.Parsed>):
+  match path:
     case None{}:
-      0
+      IO.pure(Maybe<&2, Series.Parsed>, None{})
+    case Some{xs}:
+      do IO<Maybe<&2, Series.Parsed>>:
+        text : String <- Series.read_text(xs)
+        return Some{Series.parse(text)}
+
+def run(g: Maybe<&2, G.Graph>, limit: Maybe<&2, U32>, input: String, xs: Maybe<&2, String>) -> IO(Unit):
+  match g limit:
+    case Some{+k} Some{+l}:
+      do IO<Unit>:
+        text : String <- Series.read_text(input)
+        x : Maybe<&2, Series.Parsed> <- read_xs(xs)
+        timed(k, l, Series.parse(text), x)
+    case None{} _:
+      IO.die(Unit, 2, "the graph is natural or horizontal\n" ++ usage())
+    case _ None{}:
+      IO.die(Unit, 2, "LIMIT is a whole number\n" ++ usage())
 
 def start(args: List<String>) -> IO(Unit):
   match args:
-    case Con{prog, Con{input, Con{+kind, Nil{}}}}:
-      do IO<Unit>:
-        text : String <- Series.read_text(input)
-        timed(graph_of(String.eq(kind, "horizontal")), 0, Series.parse(text), None{})
-    case Con{prog, Con{input, Con{+kind, Con{limit, Nil{}}}}}:
-      do IO<Unit>:
-        text : String <- Series.read_text(input)
-        timed(graph_of(String.eq(kind, "horizontal")), limit_of(U32.read(limit)), Series.parse(text), None{})
-    case Con{prog, Con{input, Con{+kind, Con{limit, Con{xs, Nil{}}}}}}:
-      do IO<Unit>:
-        text : String <- Series.read_text(input)
-        xtext : String <- Series.read_text(xs)
-        timed(graph_of(String.eq(kind, "horizontal")), limit_of(U32.read(limit)), Series.parse(text), Some{Series.parse(xtext)})
+    case Con{prog, Con{input, Con{kind, Nil{}}}}:
+      run(graph_named(kind), Some{0}, input, None{})
+    case Con{prog, Con{input, Con{kind, Con{limit, Nil{}}}}}:
+      run(graph_named(kind), U32.read(limit), input, None{})
+    case Con{prog, Con{input, Con{kind, Con{limit, Con{xs, Nil{}}}}}}:
+      run(graph_named(kind), U32.read(limit), input, Some{xs})
     case _:
-      IO.die(Unit, 2, "usage: bench INPUT natural|horizontal [LIMIT [XS]]")
+      IO.die(Unit, 2, usage())
 
 def main() -> IO(Unit):
   do IO<Unit>:
