@@ -1,11 +1,11 @@
-# bend-vg against ts2vg
+# bend-visgraph against ts2vg
 
 `bench/run.py` times one build of each graph, unweighted and undirected,
 on float32 series with a seed of 0. ts2vg's `build` makes the edge list
-and the degrees, and `only_degrees` skips the list. bend-vg's time covers
+and the degrees, and `only_degrees` skips the list. bend-visgraph's time covers
 the edges, a walk over them, and the degrees, from `bench/bench.bend`.
 Each time is the best of 5 runs, in ms, with the series already in memory:
-for ts2vg as a numpy array, for bend-vg as an `Array<F32>`.
+for ts2vg as a numpy array, for bend-visgraph as an `Array<F32>`.
 
 The machine is an AMD Ryzen Threadripper 7970X (32 cores, 64 threads),
 with Bend 2.0.37 and ts2vg 1.2.4 on Python 3.12. Other jobs held a load of
@@ -15,7 +15,7 @@ with Bend 2.0.37 and ts2vg 1.2.4 on Python 3.12. Other jobs held a load of
 
 `uv run python bench/run.py`:
 
-| graph | series | n | edges (ts2vg / bend-vg if they differ) | ts2vg build | ts2vg only_degrees | bend-vg 1T | bend-vg 8T | bend-vg 64T |
+| graph | series | n | edges (ts2vg / bend-visgraph if they differ) | ts2vg build | ts2vg only_degrees | bend-visgraph 1T | bend-visgraph 8T | bend-visgraph 64T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | natural | white_noise | 10,000 | 29,322 | 3 | 1 | 1 | 1 | 3 |
 | natural | white_noise | 100,000 | 294,835 | 49 | 13 | 13 | 5 | 5 |
@@ -30,13 +30,13 @@ with Bend 2.0.37 and ts2vg 1.2.4 on Python 3.12. Other jobs held a load of
 | horizontal | random_walk | 100,000 | 199,323 | 58 | 39 | 74 | 13 | 6 |
 | horizontal | random_walk | 1,000,000 | 1,997,907 | 1681 | 1393 | 2576 | 360 | 72 |
 
-On one thread, bend-vg builds every natural graph as fast as ts2vg's
+On one thread, bend-visgraph builds every natural graph as fast as ts2vg's
 Cython kernel (`only_degrees`) or faster: 2.5 times faster on the random
 walk of 1,000,000 points. It takes about twice as long as the kernel on the
 horizontal graphs from 100,000 points, whose sweep does only a comparison
 per point.
 
-With 64 threads, bend-vg builds the graphs of 1,000,000 points 17 to 76
+With 64 threads, bend-visgraph builds the graphs of 1,000,000 points 17 to 76
 times faster than ts2vg's `build`: 22 ms against 580 for the natural graph
 of white noise, and 101 ms against 7647 for that of the random walk. At
 10,000 points, 64 threads take longer than 8.
@@ -47,8 +47,8 @@ ts2vg's divide and conquer takes an interval's first highest point as its
 pivot, sweeps the interval from it, and recurses on the two sides. Every
 point is the pivot of one interval. The interval starts after the nearest
 earlier point that the pivot does not beat, and ends before the nearest
-later point that beats it. bend-vg finds these bounds for every point with
-a stack. After that, no sweep waits on another.
+later point that beats it. bend-visgraph finds these bounds for every point
+with a stack. After that, no sweep waits on another.
 
 The stack runs on blocks of about 2,000 points in parallel, each block with
 a stack of its own points. A point that pops its block's whole stack, and a
@@ -58,7 +58,7 @@ points. White noise leaves a few of them in each block. A rising series
 leaves every point to the merge, which then does the work of one stack on
 one thread.
 
-bend-vg then cuts the points into about 1,024 chunks of equal work, where
+bend-visgraph then cuts the points into about 1,024 chunks of equal work, where
 the work counts the points that the sweeps visit. A fork tree of 512
 leaves runs the chunks. The blocks and the leaves share the arrays of y and
 of the counts through Base's `Array.fork`, and x is the index. Base marks
@@ -85,7 +85,7 @@ edges the same way, with atomic adds.
 `uv run python bench/run.py --sizes 10000 50000 --limit 1` builds the
 graphs whose edges may cross one point:
 
-| graph | series | n | edges (ts2vg / bend-vg if they differ) | ts2vg build | ts2vg only_degrees | bend-vg 1T | bend-vg 8T | bend-vg 64T |
+| graph | series | n | edges (ts2vg / bend-visgraph if they differ) | ts2vg build | ts2vg only_degrees | bend-visgraph 1T | bend-visgraph 8T | bend-visgraph 64T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | natural | white_noise | 10,000 | 58,886 | 168 | 164 | 148 | 22 | 7 |
 | natural | white_noise | 50,000 | 296,409 | 4164 | 4125 | 3575 | 473 | 98 |
@@ -97,7 +97,7 @@ graphs whose edges may cross one point:
 | horizontal | random_walk | 50,000 | 198,796 | 26 | 8 | 34 | 11 | 10 |
 
 Every point of the natural graph sweeps all the points right of it, so
-the work grows as n², and the sweeps are independent. bend-vg splits the
+the work grows as n², and the sweeps are independent. bend-visgraph splits the
 start points into 128 ranges of equal work. On one thread it takes about
 13% less time than ts2vg's kernel; on 64 threads it runs 41 to 42 times
 faster than ts2vg's `build` at 50,000 points. A point the sweep sees
@@ -114,7 +114,7 @@ little work to split, and ts2vg's `only_degrees` stays faster.
 x coordinates that grow by 0.5 to 1.5, as ts2vg's `build(ts, xs)` takes
 them:
 
-| graph | series | n | edges (ts2vg / bend-vg if they differ) | ts2vg build | ts2vg only_degrees | bend-vg 1T | bend-vg 8T | bend-vg 64T |
+| graph | series | n | edges (ts2vg / bend-visgraph if they differ) | ts2vg build | ts2vg only_degrees | bend-visgraph 1T | bend-visgraph 8T | bend-visgraph 64T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | natural | white_noise | 100,000 | 295,177 | 48 | 12 | 13 | 5 | 5 |
 | natural | white_noise | 1,000,000 | 2,953,547 / 2,953,548 | 573 | 147 | 140 | 38 | 22 |
@@ -131,22 +131,22 @@ index. That costs up to 7% on one thread, on the random walks of
 
 ## Edges against ts2vg
 
-`bench/compare.py` builds each graph above with ts2vg and with bend-vg's
+`bench/compare.py` builds each graph above with ts2vg and with bend-visgraph's
 command line, and compares the two edge sets. For each edge that only one
 of them has, it decides with integers, from the float32 values, whether
 the edge crosses more than `limit` points. 24 of the 28 graphs are equal
 edge for edge. These differ:
 
-| graph | series | n | ts2vg edges | bend-vg edges | only in ts2vg | only in bend-vg |
+| graph | series | n | ts2vg edges | bend-visgraph edges | only in ts2vg | only in bend-visgraph |
 | --- | --- | --- | --- | --- | --- | --- |
 | natural | random_walk | 100,000 | 1,062,543 | 1,062,541 | 2 | 0 |
 | natural | random_walk | 1,000,000 | 12,752,617 | 12,752,619 | 11 | 13 |
 | natural, irregular x | white_noise | 1,000,000 | 2,953,547 | 2,953,548 | 0 | 1 |
 | natural, irregular x | random_walk | 1,000,000 | 12,750,305 | 12,750,298 | 22 | 15 |
 
-Every edge in the last two columns is in the graph: where three points
-are nearly collinear, each tool misses edges that the other finds. bend-vg rounds slopes to 24 bits; ts2vg rounds them to 53 bits
-and also rejects a slope that exceeds the running maximum by less than its
-tolerance, 1e-14 times the largest coordinate. On the 100,000-point walk,
-bend-vg matches `tests/reference.py`, ts2vg's kernels in float32, edge for
-edge.
+Every edge in the last two columns is in the graph: where three points are
+nearly collinear, each tool misses edges that the other finds. bend-visgraph
+rounds slopes to 24 bits; ts2vg rounds them to 53 bits and also rejects a
+slope that exceeds the running maximum by less than its tolerance, 1e-14
+times the largest coordinate. On the 100,000-point walk, bend-visgraph
+matches `tests/reference.py`, ts2vg's kernels in float32, edge for edge.

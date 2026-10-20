@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "bend-vg"
+name = "bend-visgraph"
 version = "0.0.0"
 source = { virtual = "." }
 

@@ -1,7 +1,7 @@
 """ts2vg 1.2.4's graph kernels in float32: the same operations in the same order.
 
-bend-vg must match this module bit for bit. Each function follows its Cython
-twin in ts2vg/graph/; only the float type differs.
+bend-visgraph must match this module bit for bit. Each function follows its
+Cython twin in ts2vg/graph/; only the float type differs.
 """
 
 import numpy as np

@@ -1,4 +1,4 @@
-# bend-vg's library: ts2vg's options and a series in, the edges of its
+# bend-visgraph's library: ts2vg's options and a series in, the edges of its
 # visibility graph out. `build` here relies on no @unsafe def;
 # src/parallel.bend's `build` takes the same arguments and runs on every
 # thread.

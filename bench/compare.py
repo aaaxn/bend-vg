@@ -1,9 +1,9 @@
-"""Compares bend-vg's edges with ts2vg's, edge for edge, on the series of
+"""Compares bend-visgraph's edges with ts2vg's, edge for edge, on the series of
 bench/run.py, and decides each edge they disagree on in exact arithmetic.
 
     uv run python bench/compare.py [--sizes 10000 100000 1000000] [--limit 0] [--xs]
 
-bend-vg computes in float32 and ts2vg in float64, on the same float32
+bend-visgraph computes in float32 and ts2vg in float64, on the same float32
 values. Where they disagree, integer arithmetic on those values says
 whether the edge is in the graph: an edge crosses at most `limit` points
 on or above the line between its ends (natural) or as high as its lower end
@@ -73,7 +73,7 @@ def main():
         env = {**os.environ, "BEND_NO_TELEMETRY": "1"}
         subprocess.run([BEND, "bend_vg.bend", "-o", str(work / "bend_vg")], cwd=ROOT, env=env, check=True)
 
-        print("| graph | series | n | ts2vg edges | bend-vg edges | only in ts2vg (in the graph) | only in bend-vg (in the graph) |")
+        print("| graph | series | n | ts2vg edges | bend-visgraph edges | only in ts2vg (in the graph) | only in bend-visgraph (in the graph) |")
         print("|" + " --- |" * 7)
         for kind, graph in GRAPHS.items():
             for name, make in SERIES.items():
@@ -90,11 +90,11 @@ def main():
                     theirs = keys(g._edges_array, n)
                     out = subprocess.run(cli, capture_output=True, text=True, check=True).stdout
                     ours = keys(np.array(out.split(), dtype=np.int64), n)
-                    only = {"ts2vg": np.setdiff1d(theirs, ours), "bend-vg": np.setdiff1d(ours, theirs)}
+                    only = {"ts2vg": np.setdiff1d(theirs, ours), "bend-visgraph": np.setdiff1d(ours, theirs)}
                     cells = []
                     if any(len(v) for v in only.values()):
                         ex, ey = exact(xs), exact(ts)
-                    for side in ["ts2vg", "bend-vg"]:
+                    for side in ["ts2vg", "bend-visgraph"]:
                         held = sum(in_graph(kind, ex, ey, int(k // n), int(k % n), args.limit) for k in only[side])
                         cells.append(f"{len(only[side])} ({held})" if len(only[side]) else "0")
                     print(f"| {kind} | {name} | {n:,} | {len(theirs):,} | {len(ours):,} | " + " | ".join(cells) + " |", flush=True)
