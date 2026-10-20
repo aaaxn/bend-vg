@@ -197,9 +197,11 @@ builds the graphs of 50,000 points whose edges may cross one point:
 | horizontal | white_noise | 50,000 | 199,923 | 25 | 4 | 18 | 23 | 13 | 11 | 10 | 11 | 12 |
 | horizontal | random_walk | 50,000 | 198,796 | 27 | 8 | 34 | 26 | 18 | 13 | 11 | 11 | 13 |
 
-The times at 1, 8 and 64 threads differ from the tables above by up to 8%,
-from one run to the next. Divided into the time on one thread, they give
-the speedup:
+From one run to the next, the times at 1, 8 and 64 threads differ from
+the tables above by up to 3% at 1,000,000 points and up to 8% on the
+natural graphs of 50,000 points. The horizontal graphs of 50,000 points,
+which take 9 to 13 ms there, differ by up to 3 ms. The time on one thread
+divided by each time gives the speedup:
 
 | graph | series | n | limit | 2T | 4T | 8T | 16T | 32T | 64T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -217,7 +219,7 @@ the random walk of 1,000,000 points, and the natural graphs whose edges may
 cross one point. On 16 threads they run 12.8 to 14.1 times faster than on
 one, and on 32, one thread per core, 20 to 27 times. The second thread of
 each core adds 8% to the natural graph of the random walk, and 26% to 46%
-to the others.
+to the other three.
 
 The graphs of 1,000,000 points of white noise stop near 6 times. Their
 sweeps are short, and of the 22 ms that the natural graph takes on 64
@@ -252,20 +254,23 @@ the series and imports ts2vg.
 | horizontal | white_noise | 50,000 | 199,923 | 32 | 59 | 33 | 15 | 20 | 16 |
 | horizontal | random_walk | 50,000 | 198,796 | 32 | 58 | 32 | 12 | 19 | 16 |
 
-Above its baseline, bend-visgraph's graph on one thread takes 26 to 37
-bytes per edge, and ts2vg's `build` takes 137 to 147. ts2vg's edge list
-holds a Python tuple for each edge. At 1,000,000 points, ts2vg's peak is
-0.98 to 2.8 times bend-visgraph's. It is 1,718 MiB against 624 on the
-natural graph of the random walk, and 319 against 324 on the horizontal
-graph of white noise. At 50,000 points, ts2vg's peak is 2.9 to 3.8 times
-bend-visgraph's. On 64 threads, bend-visgraph's peak is no higher than on
-one.
+The natural and horizontal graphs of one series read the same input, so
+the difference between their peaks is the memory of the extra edges. Each
+extra edge takes 32 bytes in bend-visgraph and 137 in ts2vg, whose edge
+list holds a Python tuple for each edge. Both series give these numbers.
+On the random walk, the natural graph has 10,754,712 more edges than the
+horizontal one, and it raises bend-visgraph's peak from 296 to 624 MiB
+and ts2vg's from 318 to 1,718. On 64 threads, bend-visgraph's peak is no
+higher than on one.
 
 bend-visgraph's baseline is 232 to 261 MiB for 1,000,000 values, about
 25 bytes per character of the text file, because a Bend `String` keeps
-each character in a node of its own. ts2vg's `only_degrees` keeps no edge
-list and peaks about 20 MiB above its baseline at 1,000,000 points.
-bend-visgraph always builds the edges.
+each character in a node of its own. The runtime reuses part of that
+memory for the graph, so a build's peak is less than its baseline plus its
+graph. At 1,000,000 points, ts2vg's peak is 0.98 to 2.8 times
+bend-visgraph's, and at 50,000 points 2.9 to 3.8 times. ts2vg's
+`only_degrees` keeps no edge list and peaks about 20 MiB above its
+baseline at 1,000,000 points. bend-visgraph always builds the edges.
 
 ## Edges against ts2vg
 
