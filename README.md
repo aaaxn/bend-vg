@@ -6,7 +6,8 @@ bend-vg builds visibility graphs of time series in
 horizontal, undirected or directed, limited penetrable or not, with any of
 ts2vg's edge weights. Each sweep does ts2vg's operations in the same order,
 in F32. With 64 threads, bend-vg builds the graphs of 1,000,000 values 17 to
-76 times faster than ts2vg's `build`.
+76 times faster than ts2vg's `build`. It is on
+[BendHub](https://hub.bend-lang.com/n/bend-visgraph) as `bend-visgraph`.
 
 <p align="center">
   <img src="docs/art/visibility.gif" alt="A series of 18 values drawn as bars. From one value, lines of sight reach six values, and two lines stop at a higher value in the way. Then all 36 edges of the natural visibility graph appear, and the values lift off into a network whose hubs are the highest values." width="100%">
@@ -62,8 +63,9 @@ of ts2vg's `build`:
 
 ## Use it from Bend
 
-`src/vg.bend` is the library. `VG.build(o, s)` returns the edges of the
-graph of the series `s` with ts2vg's options `o`:
+`src/vg.bend` is the library, and BendHub serves it as
+`bend-visgraph@1.0.0.0/src/vg.bend`. `VG.build(o, s)` returns the edges of
+the graph of the series `s` with ts2vg's options `o`:
 
 - `VG.Options{graph, directed, weighted, min_weight, max_weight,
   penetrable_limit}` holds the options of ts2vg's graph classes, with
@@ -76,19 +78,22 @@ graph of the series `s` with ts2vg's options `o`:
 Three defs read the edges: `VG.fold(~A, ~f, es, acc)` folds the template
 `f(acc, src, dst, w)` over them, `VG.degrees(es, n)` gives ts2vg's degrees
 as an array, and `VG.adjacency(directed, es, n)` gives the graph as
-compressed rows, each in increasing order. This program prints 4, the
-number of edges:
+compressed rows, each in increasing order. This program imports the
+library from BendHub and prints 4, the number of edges:
 
 ```python
 import Base
-import ./src/graph.bend as G
-import ./src/vg.bend as VG
+import bend-visgraph@1.0.0.0/src/graph.bend as G
+import bend-visgraph@1.0.0.0/src/vg.bend as VG
 
 def main() -> IO(Unit):
   do IO<Unit>:
     es : G.Edges = VG.build(VG.options(G.Natural{}), VG.series([3.0, 4.0, 2.0, 1.0]))
     IO.print(U32.show(VG.fold(~U32, ~(m => s => t => w => (m + 1 : U32)), es, 0)))
 ```
+
+Inside this repository, import `./src/graph.bend` and `./src/vg.bend`
+instead.
 
 `VG.build` runs the natural and horizontal graphs on one thread, and splits
 the penetrable ones among every thread. `src/parallel.bend`'s `build` and
