@@ -114,11 +114,11 @@ another.
 A stack finds the stretches. It runs on blocks of values in parallel, each
 block with a stack of its own values. Three kinds of stretch can reach past
 a block: that of a value higher than every earlier value of its block, that
-of a NaN that opens the block, and that of a value still on the stack at the
-block's end. A merge walks the blocks in order and closes them. bend-vg then
-cuts the values into chunks of equal work, where the work of a value counts the values its sweeps
-visit, and a fork tree of 512 leaves runs the chunks. On 1,000,000 values
-there are 512 blocks and about 1,024 chunks.
+of a NaN that opens the block, and that of a value still on the stack at
+the block's end. A merge walks the blocks in order and closes them. bend-vg
+then cuts the values into chunks of equal work, where the work of a value
+counts the values its sweeps visit, and a fork tree of 512 leaves runs the
+chunks. On 1,000,000 values there are 512 blocks and about 1,024 chunks.
 [How the build splits](docs/benchmark.md#how-the-build-splits) says where
 the time goes.
 
@@ -133,19 +133,19 @@ equal count for the horizontal one.
   <img src="docs/art/speed.gif" alt="Five bar charts in turn, one per graph, lower is better. Natural graph of 1,000,000 values of white noise: ts2vg build 580 ms, only_degrees 156, bend-vg on 1 thread 139 (4.2x), 8 threads 36 (16x), 64 threads 22 (26x). Random walk: 7,647, 5,597, 2,240 (3.4x), 318 (24x), 101 (76x). Horizontal graph of white noise: 338, 59, 115 (2.9x), 32 (11x), 20 (17x). Random walk: 1,681, 1,393, 2,576 (0.65x), 360 (4.7x), 72 (23x). Penetrable natural graph of 50,000 values, -p 1: 4,164, 4,125, 3,575 (1.2x), 473 (8.8x), 98 (42x)." width="640">
 </p>
 
-On one thread, bend-vg builds every natural graph as fast as ts2vg's
-Cython kernel (`only_degrees`) or faster: 2.5 times faster on the random
-walk of 1,000,000 values. It takes about twice as long as the kernel on the
+On one thread, bend-vg builds every natural graph as fast as ts2vg's Cython
+kernel (`only_degrees`) or faster: 2.5 times faster on the random walk of
+1,000,000 values. It takes about twice as long as the kernel on the
 horizontal graphs of 100,000 values and more, whose sweep does only a
-comparison per value. With 64
-threads, bend-vg builds the graphs of 1,000,000 values 17 to 76 times faster
-than ts2vg's `build`. The limited penetrable natural graph takes about 13%
-less time than ts2vg's kernel on one thread, and 64 threads build it 42 times
-faster at 50,000 values. A penetrable horizontal sweep stops early, so that
-graph has little work to split, and ts2vg's kernel stays faster on it.
-Small series gain little: on the natural and horizontal graphs of 10,000
-values, 64 threads take longer than 8. [docs/benchmark.md](docs/benchmark.md) has
-every time, the irregular x runs, and the machine.
+comparison per value. With 64 threads, bend-vg builds the graphs of
+1,000,000 values 17 to 76 times faster than ts2vg's `build`. The limited
+penetrable natural graph takes about 13% less time than ts2vg's kernel on
+one thread, and 64 threads build it 42 times faster at 50,000 values. A
+penetrable horizontal sweep stops early, so that graph has little work to
+split, and ts2vg's kernel stays faster on it. Small series gain little: on
+the natural and horizontal graphs of 10,000 values, 64 threads take longer
+than 8. [docs/benchmark.md](docs/benchmark.md) has every time, the
+irregular x runs, and the machine.
 
 ## Its edges are ts2vg's
 
