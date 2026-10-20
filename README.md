@@ -63,44 +63,53 @@ of ts2vg's `build`:
 
 ## Use it from Bend
 
-`src/vg.bend` is the library, and BendHub serves it as
-`bend-visgraph@1.0.1.0/src/vg.bend`. `VG.build(o, s)` returns the edges of
-the graph of the series `s` with ts2vg's options `o`:
+`visgraph.bend` is the library, and BendHub serves it as
+`bend-visgraph@2.0.0.0/visgraph.bend`. `VG.build(o, s)` returns the graph
+of the series `s` with ts2vg's options `o`:
 
-- `VG.Options{graph, directed, weighted, min_weight, max_weight,
-  penetrable_limit}` holds the options of ts2vg's graph classes, with
-  `G.neg_inf()` and `G.inf()` as no bound; `VG.options(G.Natural{})` gives
-  ts2vg's defaults.
+- `VG.Options{visibility, directed, weighted, min_weight, max_weight,
+  penetrable_limit}` holds the options of ts2vg's graph classes:
+  `VG.Natural{}` or `VG.Horizontal{}`; `VG.Undirected{}`,
+  `VG.LeftToRight{}` or `VG.TopToBottom{}`; a weight such as
+  `VG.Unweighted{}` or `VG.Distance{}`; the bounds on the weights, with
+  `VG.neg_inf()` and `VG.inf()` as none; and how many values an edge may
+  cross. `VG.options(VG.Natural{})` gives ts2vg's defaults.
 - `VG.Series{n, ys, xs}` holds `n` values in an array, and their x as
-  `G.Index{}` or `G.At{xs}`. `VG.series(values)` and `VG.series_at(xs,
+  `VG.Index{}` or `VG.At{xs}`. `VG.series(values)` and `VG.series_at(xs,
   values)` make one from lists.
+- `VG.Graph{n, directed, edges}` is the graph. `VG.fold(~A, ~f, g, acc)`
+  folds the template `f(acc, src, dst, w)` over its edges, `VG.degrees(g)`
+  gives ts2vg's degrees as an array, and `VG.adjacency(g)` gives its
+  compressed rows, each in increasing order.
 
-Three defs read the edges: `VG.fold(~A, ~f, es, acc)` folds the template
-`f(acc, src, dst, w)` over them, `VG.degrees(es, n)` gives ts2vg's degrees
-as an array, and `VG.adjacency(directed, es, n)` gives the graph as
-compressed rows, each in increasing order. This program imports the
-library from BendHub and prints 4, the number of edges:
+This program imports the library from BendHub and prints 4, the number of
+edges:
 
 ```python
 import Base
-import bend-visgraph@1.0.1.0/src/graph.bend as G
-import bend-visgraph@1.0.1.0/src/vg.bend as VG
+import bend-visgraph@2.0.0.0/visgraph.bend as VG
 
 def main() -> IO(Unit):
   do IO<Unit>:
-    es : G.Edges = VG.build(VG.options(G.Natural{}), VG.series([3.0, 4.0, 2.0, 1.0]))
-    IO.print(U32.show(VG.fold(~U32, ~(m => s => t => w => (m + 1 : U32)), es, 0)))
+    g : VG.Graph = VG.build(VG.options(VG.Natural{}), VG.series([3.0, 4.0, 2.0, 1.0]))
+    IO.print(U32.show(VG.fold(~U32, ~(m => s => t => w => (m + 1 : U32)), g, 0)))
 ```
 
-Inside this repository, import `./src/graph.bend` and `./src/vg.bend`
-instead.
-
 `VG.build` runs the natural and horizontal graphs on one thread, and splits
-the penetrable ones among every thread. `src/parallel.bend`'s `build` and
-`degrees` take the same arguments and run on every thread; the command line
-uses them. Only `src/parallel.bend` relies on Base's `@unsafe`
-`Array.fork`, so `bend --check-only` passes on a program that does not
-import it, such as `tests/one_thread.bend` and `tests/library.bend`.
+the penetrable ones among every thread. `parallel.bend` builds every graph
+on every thread: `Par.build` and `Par.degrees` take what `VG.build` and
+`VG.degrees` take, and the command line uses them. Only `parallel.bend`
+relies on Base's `@unsafe` `Array.fork`, so `bend --check-only` passes on a
+program that does not import it, such as `tests/one_thread.bend` and
+`tests/library.bend`.
+
+```python
+import bend-visgraph@2.0.0.0/visgraph.bend as VG
+import bend-visgraph@2.0.0.0/parallel.bend as Par
+```
+
+Inside this repository, import `./visgraph.bend` and `./parallel.bend`
+instead.
 
 ## Every value sweeps its own stretch
 
@@ -207,7 +216,7 @@ uv run pytest -n auto
 ```
 
 `bend PROOF.bend` checks the proofs, and still prints SOME PROOFS FAIL,
-naming the 13 defs of `src/parallel.bend` that rely on Base's `@unsafe`
+naming the 13 defs of `parallel.bend` that rely on Base's `@unsafe`
 `Array.fork`: the tasks that share a forked array read it, write cells no
 other task writes, or add to cells atomically.
 

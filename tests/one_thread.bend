@@ -2,32 +2,31 @@
 # on Base's @unsafe, so `bend --check-only` passes on this file:
 #   one_thread INPUT natural|horizontal [LIMIT [XS]]
 import Base
-import ../src/graph.bend as G
+import ../visgraph.bend as VG
 import ../src/series.bend as Series
 import ../src/report.bend as Report
-import ../src/vg.bend as VG
 
-def graph_of(horizontal: Bool) -> G.Graph:
+def graph_of(horizontal: Bool) -> VG.Visibility:
   match horizontal:
     case True{}:
-      G.Horizontal{}
+      VG.Horizontal{}
     case False{}:
-      G.Natural{}
+      VG.Natural{}
 
 # The x of each value: the index, or the values of XS, which must increase.
-def xs_of(x: Maybe<&2, Series.Parsed>, +n: U32) -> G.Xs:
+def xs_of(x: Maybe<&2, Series.Parsed>, +n: U32) -> VG.Xs:
   match x:
     case Some{Series.Values{rev, m}}:
-      G.At{Series.ys(rev, n)}
+      VG.At{Series.ys(rev, n)}
     case _:
-      G.Index{}
+      VG.Index{}
 
-def edges(+g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
+def edges(+g: VG.Visibility, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
   match p:
     case Series.Bad{line}:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
     case Series.Values{rev, +n}:
-      IO.write(Report.edges_text(False{}, VG.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, Series.ys(rev, n), xs_of(x, n)}), ""))
+      IO.write(Report.edge_list(False{}, VG.build(VG.Options{g, VG.Undirected{}, VG.Unweighted{}, VG.neg_inf(), VG.inf(), limit}, VG.Series{n, Series.ys(rev, n), xs_of(x, n)})))
 
 def limit_of(found: Maybe<&2, U32>) -> U32:
   match found:
