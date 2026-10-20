@@ -1,7 +1,7 @@
 # What ts2vg's command line prints: the edge list, the degree sequence, the
 # degree counts and the degree distribution.
 import Base
-import ./graph.bend as G
+import ../visgraph.bend as VG
 
 # Edges, one per line: `src dst`, then the weight when the graph is weighted.
 
@@ -15,28 +15,21 @@ def weight_text(weighted: Bool, w: F32) -> String:
 def edge_line(+weighted: Bool, s: U32, t: U32, w: F32) -> String:
   U32.show(s) ++ " " ++ U32.show(t) ++ weight_text(weighted, w) ++ "\n"
 
-def edges_text(+weighted: Bool, es: G.Edges, acc: String) -> String:
+def edges_text(+weighted: Bool, es: VG.Edges, acc: String) -> String:
   match es:
-    case G.ENil{}:
+    case VG.ENil{}:
       acc
-    case G.ECon{s, t, w, next}:
+    case VG.ECon{s, t, w, next}:
       edges_text(weighted, next, edge_line(weighted, s, t, w) ++ acc)
-    case G.EJoin{a, b}:
+    case VG.EJoin{a, b}:
       edges_text(weighted, b, edges_text(weighted, a, acc))
 
-def is_weighted(k: G.Weight) -> Bool:
+def is_weighted(k: VG.Weight) -> Bool:
   match k:
-    case G.Unweighted{}:
+    case VG.Unweighted{}:
       False{}
     case _:
       True{}
-
-# Degrees: each edge adds one to the degree of both of its ends, as ts2vg's
-# degrees_in + degrees_out.
-
-# An array with room for `n` slots, indexed from 0.
-def slots(+n: U32) -> Array<U32>:
-  Array.new(U32, Nat.add(1n, U32.log2(n)), 0)
 
 def bump.set(+i: U32, r: Array<U32> & U32) -> Array<U32>:
   (d, v) = r
@@ -44,24 +37,6 @@ def bump.set(+i: U32, r: Array<U32> & U32) -> Array<U32>:
 
 def bump(d: Array<U32>, +i: U32) -> Array<U32>:
   bump.set(i, Array.get(U32, d, i))
-
-def added(r: Array<U32> & U32) -> Array<U32>:
-  (d, old) = r
-  d
-
-def atomic_bump(d: Array<U32>, +i: U32) -> Array<U32>:
-  added(Array.atomic.add(d, i, 1))
-
-# The degrees of the nodes of `es`, added into `d`; parallel.bend counts
-# them on every thread.
-def degrees(es: G.Edges, d: Array<U32>) -> Array<U32>:
-  match es:
-    case G.ENil{}:
-      d
-    case G.ECon{s, t, w, next}:
-      degrees(next, atomic_bump(atomic_bump(d, s), t))
-    case G.EJoin{a, b}:
-      degrees(b, degrees(a, d))
 
 # The degree sequence, one per line. `r` is the degree array with the
 # degree of node `i`; the `f` nodes below `i` are still to print.
@@ -129,7 +104,12 @@ def degree_counts.from(empty: Bool, +share: Bool, +n: U32, d: Array<U32>) -> Str
     case True{}:
       ""
     case False{}:
-      degree_counts.text(share, n, count_loop(U32.to_nat((n - 1 : U32)), Array.get(U32, d, 0), 0, slots(n)))
+      degree_counts.text(share, n, count_loop(U32.to_nat((n - 1 : U32)), Array.get(U32, d, 0), 0, VG.slots(n)))
 
 def degree_counts(+share: Bool, +n: U32, d: Array<U32>) -> String:
   degree_counts.from(U32.is_zero(n), share, n, d)
+
+# The edge list of `g`.
+def edge_list(+weighted: Bool, g: VG.Graph) -> String:
+  VG.Graph{n, dir, es} = g
+  edges_text(weighted, es, "")

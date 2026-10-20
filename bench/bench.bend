@@ -4,23 +4,21 @@
 # prints `points edges checksum edges_ms degrees_ms`. The checksum, the sum of every
 # edge's ends and every degree, makes the run read the whole graph.
 import Base
-import ../src/graph.bend as G
-import ../src/parallel.bend as Par
-import ../src/vg.bend as VG
+import ../visgraph.bend as VG
+import ../parallel.bend as Par
 import ../src/series.bend as Series
-import ../src/report.bend as Report
 
 type Tally is Data:
   Tally{m: U32, sum: U32}
 
-def tally(es: G.Edges, t: Tally) -> Tally:
+def tally(es: VG.Edges, t: Tally) -> Tally:
   match es:
-    case G.ENil{}:
+    case VG.ENil{}:
       t
-    case G.ECon{s, d, w, next}:
+    case VG.ECon{s, d, w, next}:
       Tally{m, sum} = t
       tally(next, Tally{(m + 1 : U32), (sum + s + d : U32)})
-    case G.EJoin{a, b}:
+    case VG.EJoin{a, b}:
       tally(b, tally(a, t))
 
 def both(x: Tally, y: Tally) -> Tally:
@@ -28,12 +26,12 @@ def both(x: Tally, y: Tally) -> Tally:
     case Tally{m1, s1} Tally{m2, s2}:
       Tally{(m1 + m2 : U32), (s1 + s2 : U32)}
 
-def tally_tree(depth: Nat, es: G.Edges) -> Tally:
+def tally_tree(depth: Nat, es: VG.Edges) -> Tally:
   match depth es:
-    case 1n++p G.EJoin{a, b}:
+    case 1n++p VG.EJoin{a, b}:
       x y = tally_tree(p, a) tally_tree(p, b)
       both(x, y)
-    case 0n G.EJoin{a, b}:
+    case 0n VG.EJoin{a, b}:
       x y = tally(a, Tally{0, 0}) tally(b, Tally{0, 0})
       both(x, y)
     case _ _:
@@ -53,15 +51,15 @@ def add_degrees(t: Tally, +d: U32) -> Tally:
   Tally{m, (sum + d : U32)}
 
 type Timed is Type:
-  Timed{es: G.Edges, t: Tally, now: Nat}
+  Timed{g: VG.Graph, t: Tally, now: Nat}
 
-# The time once the tally `t` of the edges `es` is computed.
-def stamp_edges(es: G.Edges, t: Tally) -> IO(Timed):
+# The time once the tally `t` of the edges of `g` is computed.
+def stamp_edges(g: VG.Graph, t: Tally) -> IO(Timed):
   match t:
     case Tally{m, sum}:
       do IO<Timed>:
         now : Nat <- IO.now()
-        return Timed{es, Tally{m, sum}, now}
+        return Timed{g, Tally{m, sum}, now}
 
 def stamp(t: Tally) -> IO(Tally & Nat):
   match t:
@@ -77,37 +75,38 @@ def report(+n: U32, +t0: Nat, +t1: Nat, done: Tally & Nat) -> IO(Unit):
       IO.print(U32.show(n) ++ " " ++ U32.show(m) ++ " " ++ U32.show(sum) ++ " " ++ Nat.show(Nat.sub(t1, t0)) ++ " " ++ Nat.show(Nat.sub(t2, t1)))
 
 def degrees_of(+n: U32, +t0: Nat, timed: Timed) -> IO(Unit):
-  Timed{es, t, +t1} = timed
+  Timed{g, t, +t1} = timed
   do IO<Unit>:
-    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Par.degrees(es, n), 0), 0)))
+    done : Tally & Nat <- stamp(add_degrees(t, degree_sum(U32.to_nat(n), 0, Array.get(U32, Par.degrees(g), 0), 0)))
     report(n, t0, t1, done)
 
-def edges_of(+n: U32, +t0: Nat, +es: G.Edges) -> IO(Unit):
+def edges_of(+n: U32, +t0: Nat, +g: VG.Graph) -> IO(Unit):
+  VG.Graph{m, dir, +es} = g
   do IO<Unit>:
-    timed : Timed <- stamp_edges(es, tally_tree(Par.fork_depth(), es))
+    timed : Timed <- stamp_edges(g, tally_tree(Par.fork_depth(), es))
     degrees_of(n, t0, timed)
 
-def from_values(+g: G.Graph, +limit: U32, +n: U32, ys: Array<F32>, xs: G.Xs) -> IO(Unit):
+def from_values(+g: VG.Visibility, +limit: U32, +n: U32, ys: Array<F32>, xs: VG.Xs) -> IO(Unit):
   do IO<Unit>:
     t0 : Nat <- IO.now()
-    edges_of(n, t0, Par.build(VG.Options{g, G.Undirected{}, G.Unweighted{}, G.neg_inf(), G.inf(), limit}, VG.Series{n, ys, xs}))
+    edges_of(n, t0, Par.build(VG.Options{g, VG.Undirected{}, VG.Unweighted{}, VG.neg_inf(), VG.inf(), limit}, VG.Series{n, ys, xs}))
 
 # x as the index is an F32, which holds every index below 2^24 exactly.
-def from_index(too_long: Bool, +g: G.Graph, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
+def from_index(too_long: Bool, +g: VG.Visibility, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
   match too_long:
     case True{}:
       IO.die(Unit, 1, "bench takes at most 16777216 values, since x is the index as an F32")
     case False{}:
-      from_values(g, limit, n, Series.ys(rev, n), G.Index{})
+      from_values(g, limit, n, Series.ys(rev, n), VG.Index{})
 
-def from_xs(x: Series.XsCheck, +g: G.Graph, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
+def from_xs(x: Series.XsCheck, +g: VG.Visibility, +limit: U32, rev: List<&2, F32>, +n: U32) -> IO(Unit):
   match x:
     case Series.XsBad{msg}:
       IO.die(Unit, 1, msg)
     case Series.XsOk{xrev}:
-      from_values(g, limit, n, Series.ys(rev, n), G.At{Series.ys(xrev, n)})
+      from_values(g, limit, n, Series.ys(rev, n), VG.At{Series.ys(xrev, n)})
 
-def timed(+g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
+def timed(+g: VG.Visibility, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed>) -> IO(Unit):
   match p x:
     case Series.Bad{line} _:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
@@ -119,16 +118,16 @@ def timed(+g: G.Graph, +limit: U32, p: Series.Parsed, x: Maybe<&2, Series.Parsed
 def usage() -> String:
   "usage: bench INPUT natural|horizontal [LIMIT [XS]]"
 
-def graph_of(natural: Bool, horizontal: Bool) -> Maybe<&2, G.Graph>:
+def graph_of(natural: Bool, horizontal: Bool) -> Maybe<&2, VG.Visibility>:
   match natural horizontal:
     case True{} _:
-      Some{G.Natural{}}
+      Some{VG.Natural{}}
     case False{} True{}:
-      Some{G.Horizontal{}}
+      Some{VG.Horizontal{}}
     case False{} False{}:
       None{}
 
-def graph_named(+kind: String) -> Maybe<&2, G.Graph>:
+def graph_named(+kind: String) -> Maybe<&2, VG.Visibility>:
   graph_of(String.eq(kind, "natural"), String.eq(kind, "horizontal"))
 
 def read_xs(path: Maybe<&2, String>) -> IO(Maybe<&2, Series.Parsed>):
@@ -140,7 +139,7 @@ def read_xs(path: Maybe<&2, String>) -> IO(Maybe<&2, Series.Parsed>):
         text : String <- Series.read_text(xs)
         return Some{Series.parse(text)}
 
-def run(g: Maybe<&2, G.Graph>, limit: Maybe<&2, U32>, input: String, xs: Maybe<&2, String>) -> IO(Unit):
+def run(g: Maybe<&2, VG.Visibility>, limit: Maybe<&2, U32>, input: String, xs: Maybe<&2, String>) -> IO(Unit):
   match g limit:
     case Some{+k} Some{+l}:
       do IO<Unit>:

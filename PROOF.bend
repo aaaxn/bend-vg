@@ -1,9 +1,8 @@
 # The proofs of LAWS.bend, each by induction on a list or on the depth of the
 # split.
 import Base
-import ./src/graph.bend as G
-import ./src/parallel.bend as Par
-import ./src/penetrable.bend as P
+import ./visgraph.bend as VG
+import ./parallel.bend as Par
 import ./LAWS.bend as Laws
 
 # Each step moves a chunk onto acc, as rev_onto does.
@@ -16,32 +15,32 @@ def Laws.halve_keeps(k, cs, na, total, acc):
     case 0n _:
       {==}
 
-def cat_assoc(a: G.Edges, +b: G.Edges, +c: G.Edges) -> {Laws.cat(Laws.cat(a, b), c) == Laws.cat(a, Laws.cat(b, c)) : G.Edges}:
+def cat_assoc(a: VG.Edges, +b: VG.Edges, +c: VG.Edges) -> {Laws.cat(Laws.cat(a, b), c) == Laws.cat(a, Laws.cat(b, c)) : VG.Edges}:
   match a:
-    case G.ENil{}:
+    case VG.ENil{}:
       {==}
-    case G.ECon{+s, +t, +w, next}:
-      %cat_assoc(next, b, c) : {G.ECon{s, t, w, Laws.cat(Laws.cat(next, b), c)} == G.ECon{s, t, w, _} : G.Edges}
+    case VG.ECon{+s, +t, +w, next}:
+      %cat_assoc(next, b, c) : {VG.ECon{s, t, w, Laws.cat(Laws.cat(next, b), c)} == VG.ECon{s, t, w, _} : VG.Edges}
       {==}
-    case G.EJoin{+x, +y}:
-      %cat_assoc(y, b, c) : {Laws.cat(Laws.cat(x, Laws.cat(y, b)), c) == Laws.cat(x, _) : G.Edges}
+    case VG.EJoin{+x, +y}:
+      %cat_assoc(y, b, c) : {Laws.cat(Laws.cat(x, Laws.cat(y, b)), c) == Laws.cat(x, _) : VG.Edges}
       cat_assoc(x, Laws.cat(y, b), c)
 
 # Taking the first start out of the first range: the hypothesis covers the
 # rest, and cat_assoc regroups the first start's rope.
 def Laws.sweeps_split(pts, c1, c2, g, dir, k, lo, hi, limit):
   match pts c1:
-    case P.PNil{} 0n:
+    case VG.PNil{} 0n:
       {==}
-    case P.PNil{} 1n+c:
+    case VG.PNil{} 1n+c:
       {==}
-    case P.PCon{i, x, y, next} 0n:
+    case VG.PCon{i, x, y, next} 0n:
       {==}
-    case P.PCon{+i, +x, +y, +next} 1n+c:
-      +first = Laws.normal(P.sweep(g, dir, k, lo, hi, limit, i, x, y, next, G.ENil{}))
-      +a = Laws.normal(P.sweeps(next, c, g, dir, k, lo, hi, limit))
-      +b = Laws.normal(P.sweeps(P.drop(c, next), c2, g, dir, k, lo, hi, limit))
-      %Laws.sweeps_split(next, c, c2, g, dir, k, lo, hi, limit) : {Laws.cat(Laws.cat(first, a), b) == Laws.cat(first, _) : G.Edges}
+    case VG.PCon{+i, +x, +y, +next} 1n+c:
+      +first = Laws.normal(VG.sweep(g, dir, k, lo, hi, limit, i, x, y, next, VG.ENil{}))
+      +a = Laws.normal(VG.sweeps(next, c, g, dir, k, lo, hi, limit))
+      +b = Laws.normal(VG.sweeps(VG.drop(c, next), c2, g, dir, k, lo, hi, limit))
+      %Laws.sweeps_split(next, c, c2, g, dir, k, lo, hi, limit) : {Laws.cat(Laws.cat(first, a), b) == Laws.cat(first, _) : VG.Edges}
       cat_assoc(first, a, b)
 
 # The first `m` of `count`, then the rest, are `count`.
@@ -62,14 +61,14 @@ def Laws.split_sweeps(depth, g, dir, k, lo, hi, limit, pts, len, cu, count):
     case 0n:
       {==}
     case 1n++d:
-      +c1u = P.first_half(g, len, cu)
+      +c1u = VG.first_half(g, len, cu)
       +c1 = Nat.min(count, U32.to_nat(c1u))
-      +rest = P.drop(c1, pts)
-      +low = Laws.normal(P.split(d, g, dir, k, lo, hi, limit, pts, len, c1u, c1))
-      +high = Laws.normal(P.split(d, g, dir, k, lo, hi, limit, rest, (len - c1u : U32), (cu - c1u : U32), Nat.sub(count, c1)))
+      +rest = VG.drop(c1, pts)
+      +low = Laws.normal(VG.split(d, g, dir, k, lo, hi, limit, pts, len, c1u, c1))
+      +high = Laws.normal(VG.split(d, g, dir, k, lo, hi, limit, rest, (len - c1u : U32), (cu - c1u : U32), Nat.sub(count, c1)))
       +low_is = Laws.split_sweeps(d, g, dir, k, lo, hi, limit, pts, len, c1u, c1)
       +high_is = Laws.split_sweeps(d, g, dir, k, lo, hi, limit, rest, (len - c1u : U32), (cu - c1u : U32), Nat.sub(count, c1))
-      %Equal.sym(G.Edges, low, Laws.normal(P.sweeps(pts, c1, g, dir, k, lo, hi, limit)), low_is) : {Laws.cat(_, high) == Laws.normal(P.sweeps(pts, count, g, dir, k, lo, hi, limit)) : G.Edges}
-      %Equal.sym(G.Edges, high, Laws.normal(P.sweeps(rest, Nat.sub(count, c1), g, dir, k, lo, hi, limit)), high_is) : {Laws.cat(Laws.normal(P.sweeps(pts, c1, g, dir, k, lo, hi, limit)), _) == Laws.normal(P.sweeps(pts, count, g, dir, k, lo, hi, limit)) : G.Edges}
-      %min_sub(count, U32.to_nat(c1u)) : {Laws.cat(Laws.normal(P.sweeps(pts, c1, g, dir, k, lo, hi, limit)), Laws.normal(P.sweeps(rest, Nat.sub(count, c1), g, dir, k, lo, hi, limit))) == Laws.normal(P.sweeps(pts, _, g, dir, k, lo, hi, limit)) : G.Edges}
+      %Equal.sym(VG.Edges, low, Laws.normal(VG.sweeps(pts, c1, g, dir, k, lo, hi, limit)), low_is) : {Laws.cat(_, high) == Laws.normal(VG.sweeps(pts, count, g, dir, k, lo, hi, limit)) : VG.Edges}
+      %Equal.sym(VG.Edges, high, Laws.normal(VG.sweeps(rest, Nat.sub(count, c1), g, dir, k, lo, hi, limit)), high_is) : {Laws.cat(Laws.normal(VG.sweeps(pts, c1, g, dir, k, lo, hi, limit)), _) == Laws.normal(VG.sweeps(pts, count, g, dir, k, lo, hi, limit)) : VG.Edges}
+      %min_sub(count, U32.to_nat(c1u)) : {Laws.cat(Laws.normal(VG.sweeps(pts, c1, g, dir, k, lo, hi, limit)), Laws.normal(VG.sweeps(rest, Nat.sub(count, c1), g, dir, k, lo, hi, limit))) == Laws.normal(VG.sweeps(pts, _, g, dir, k, lo, hi, limit)) : VG.Edges}
       Laws.sweeps_split(pts, c1, Nat.sub(count, c1), g, dir, k, lo, hi, limit)
