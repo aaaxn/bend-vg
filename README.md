@@ -158,8 +158,14 @@ one thread, and 64 threads build it 42 times faster at 50,000 values. A
 penetrable horizontal sweep stops early, so that graph has little work to
 split, and ts2vg's kernel stays faster on it. Small series gain little: on
 the natural and horizontal graphs of 10,000 values, 64 threads take longer
-than 8. [docs/benchmark.md](docs/benchmark.md) has every time, the irregular
-x runs, and the machine.
+than 8. For many small series, such as the windows of a long one, build
+each with `VG.build` and split the series among the threads, as
+`bench/windows.bend` does. The windows of 100 to 10,000 values of a series
+of 1,000,000 then take 7 to 31 ms on 64 threads, 18 to 80 times less than a
+loop of ts2vg's `build`. Each edge takes about 32 bytes, a quarter of what
+ts2vg's edge list takes. [docs/benchmark.md](docs/benchmark.md) has every
+time, the irregular x runs, the windows, the threads, the memory, and the
+machine.
 
 ## Its edges are ts2vg's
 

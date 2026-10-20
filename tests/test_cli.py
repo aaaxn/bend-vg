@@ -67,7 +67,8 @@ def builds(tmp_path_factory, worker_id):
             for source, target in [("bend_visgraph.bend", "bend_visgraph"), ("tests/one_thread.bend", "one_thread"), ("tests/library.bend", "library")]:
                 for suffix in ["", ".js"]:
                     subprocess.run([BEND, source, "-o", str(out / (target + suffix))], cwd=ROOT, env=env, check=True)
-            subprocess.run([BEND, "bench/bench.bend", "-o", str(out / "bench")], cwd=ROOT, env=env, check=True)
+            for source, target in [("bench/bench.bend", "bench"), ("bench/windows.bend", "windows")]:
+                subprocess.run([BEND, source, "-o", str(out / target)], cwd=ROOT, env=env, check=True)
             (out / "done").touch()
     return out
 
@@ -418,8 +419,13 @@ def test_bench_rejects_bad_arguments(builds, inputs, tmp_path, args, code, error
     assert error in done.stderr
 
 
-# The bench prints the points, the edges, and the sum of every edge's ends
-# and every degree, which is the sum of the ends plus twice the edges.
+# The sum of every edge's ends and every degree, which is the sum of the ends
+# plus twice the edges.
+def checksum_of(graphs):
+    return sum(s + t + 2 for edges in graphs for s, t, _ in edges) % 2**32
+
+
+# The bench prints the points, the edges, and the checksum.
 @pytest.mark.parametrize(("series", "kind", "limit", "xs"), [("sample_2", "natural", 0, None), ("noise_nans", "horizontal", 2, "spread")])
 def test_bench_counts_match_reference(builds, inputs, xs_inputs, series, kind, limit, xs):
     x = None if xs is None else XS[series, xs]
@@ -431,7 +437,41 @@ def test_bench_counts_match_reference(builds, inputs, xs_inputs, series, kind, l
     done = subprocess.run([str(builds / "bench"), str(inputs[series]), *args], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
     n, m, checksum = map(int, done.stdout.split()[:3])
-    assert (n, m, checksum) == (len(SERIES[series]), len(edges), (sum(s + t for s, t, _ in edges) + 2 * len(edges)) % 2**32)
+    assert (n, m, checksum) == (len(SERIES[series]), len(edges), checksum_of([edges]))
+
+
+# The reference graph of each window of W values.
+@functools.cache
+def window_graphs(series, kind, w):
+    ts = SERIES[series]
+    return [reference.build(ts[k * w:(k + 1) * w], kind) for k in range(len(ts) // w)]
+
+
+# The windows driver prints the windows, the edges, and the same checksum over
+# every window's graph.
+@pytest.mark.parametrize("mode", ["one", "par", "split"])
+@pytest.mark.parametrize(("series", "kind", "w"), [("white_noise", "natural", 7), ("brownian", "horizontal", 100), ("noise_nans", "natural", 300)])
+def test_windows_counts_match_reference(builds, inputs, series, kind, w, mode):
+    graphs = window_graphs(series, kind, w)
+    done = subprocess.run([str(builds / "windows"), str(inputs[series]), kind, str(w), mode], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert tuple(map(int, done.stdout.split()[:3])) == (len(graphs), sum(len(edges) for edges in graphs), checksum_of(graphs))
+
+
+@pytest.mark.parametrize(
+    ("args", "code", "error"),
+    [
+        (["natural", "0", "one"], 1, "W must be at least 1"),
+        (["natural", "5", "one"], 1, "W must be at least 1"),
+        (["linear", "2", "one"], 2, "usage"),
+        (["natural", "2", "fast"], 2, "usage"),
+        (["natural", "two", "one"], 2, "usage"),
+    ],
+)
+def test_windows_rejects_bad_arguments(builds, inputs, args, code, error):
+    done = subprocess.run([str(builds / "windows"), str(inputs["sample"]), *args], capture_output=True, text=True)
+    assert done.returncode == code
+    assert error in done.stderr
 
 
 # Long series: the JS lane's stack overflows on a recursion about as deep as
