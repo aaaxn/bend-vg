@@ -402,8 +402,10 @@ def test_library_weight_bounds_match_reference(library, inputs, series, kind, di
     [
         (["linear"], 2, "natural or horizontal"),
         (["natural", "two"], 2, "LIMIT is a whole number"),
+        (["natural", "-1"], 2, "LIMIT is a whole number"),
         (["natural", "0", "1\n2\nx\n4\n"], 1, "line 3 of the x coordinates"),
         (["natural", "0", "1\n2\n3\n"], 1, "hold 3 values and the series 4"),
+        (["natural", "0", "1\n2\n2\n3\n"], 1, "must increase"),
         (["horizontal", "1", "1\n3\n2\n4\n"], 1, "must increase"),
     ],
 )
@@ -414,6 +416,22 @@ def test_bench_rejects_bad_arguments(builds, inputs, tmp_path, args, code, error
     done = subprocess.run([str(builds / "bench"), str(inputs["sample"]), *args], capture_output=True, text=True)
     assert done.returncode == code
     assert error in done.stderr
+
+
+# The bench prints the points, the edges, and the sum of every edge's ends
+# and every degree, which is the sum of the ends plus twice the edges.
+@pytest.mark.parametrize(("series", "kind", "limit", "xs"), [("sample_2", "natural", 0, None), ("noise_nans", "horizontal", 2, "spread")])
+def test_bench_counts_match_reference(builds, inputs, xs_inputs, series, kind, limit, xs):
+    x = None if xs is None else XS[series, xs]
+    if limit:
+        edges = reference.build_penetrable(SERIES[series], kind, None, None, limit, xs=x)
+    else:
+        edges = reference.build(SERIES[series], kind, xs=x)
+    args = [kind, str(limit)] + ([] if xs is None else [str(xs_inputs[series, xs])])
+    done = subprocess.run([str(builds / "bench"), str(inputs[series]), *args], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    n, m, checksum = map(int, done.stdout.split()[:3])
+    assert (n, m, checksum) == (len(SERIES[series]), len(edges), (sum(s + t for s, t, _ in edges) + 2 * len(edges)) % 2**32)
 
 
 # Long series: the JS lane's stack overflows on a recursion about as deep as
