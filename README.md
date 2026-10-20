@@ -135,7 +135,7 @@ equal count for the horizontal one.
 ## It builds a million values 17 to 76 times faster
 
 <p align="center">
-  <img src="docs/art/speed.gif" alt="Five bar charts in turn, one per graph, lower is better. Natural graph of 1,000,000 values of white noise: ts2vg build 580 ms, only_degrees 156, bend-vg on 1 thread 139 (4.2x), 8 threads 36 (16x), 64 threads 22 (26x). Random walk: 7,647, 5,597, 2,240 (3.4x), 318 (24x), 101 (76x). Horizontal graph of white noise: 338, 59, 115 (2.9x), 32 (11x), 20 (17x). Random walk: 1,681, 1,393, 2,576 (0.65x), 360 (4.7x), 72 (23x). Penetrable natural graph of 50,000 values, -p 1: 4,164, 4,125, 3,575 (1.2x), 473 (8.8x), 98 (42x)." width="640">
+  <img src="docs/art/speed.gif" alt="Five bar charts in turn, one per graph, lower is better. Natural graph of 1,000,000 values of white noise: ts2vg build 580 ms, only_degrees 156, bend-visgraph on 1 thread 139 (4.2x), 8 threads 36 (16x), 64 threads 22 (26x). Random walk: 7,647, 5,597, 2,240 (3.4x), 318 (24x), 101 (76x). Horizontal graph of white noise: 338, 59, 115 (2.9x), 32 (11x), 20 (17x). Random walk: 1,681, 1,393, 2,576 (0.65x), 360 (4.7x), 72 (23x). Penetrable natural graph of 50,000 values, -p 1: 4,164, 4,125, 3,575 (1.2x), 473 (8.8x), 98 (42x)." width="640">
 </p>
 
 On one thread, bend-vg builds every natural graph as fast as ts2vg's Cython
