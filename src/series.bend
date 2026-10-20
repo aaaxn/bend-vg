@@ -1,6 +1,7 @@
 # A time series from text with one value per line, as ts2vg's command line
 # reads it. Blank lines are skipped. Each value is rounded once, from its
-# decimal text to F32, and its x is its index.
+# decimal text to F32. Its x is its index, or the number in the same place
+# in a file of x coordinates, which `xs` checks.
 import Base
 
 type Parsed is Data:
@@ -78,3 +79,43 @@ def read_text(path: String) -> IO(String):
     f : File <- IO.try(File, File.open(path, "r"))
     sized : File & Result<&1, &1, U32 & String, U32> <- File.size(f)
     read_text.sized(sized)
+
+# The x coordinates of a file, last first, if they suit a series; or why
+# they do not.
+type XsCheck is Data:
+  XsOk{rev: List<&2, F32>}
+  XsBad{msg: String}
+
+# Whether each value of `rest`, last first, is below `a`, as ts2vg checks
+# that x increases.
+def increasing(rest: List<&2, F32>, +a: F32, ok: Bool) -> Bool:
+  match rest:
+    case Nil{}:
+      ok
+    case Con{+b, t}:
+      increasing(t, b, ok && Bool.not(F32.is_le(F32.sub(a, b), 0.0)))
+
+def increases(xrev: List<&2, F32>) -> Bool:
+  match xrev:
+    case Nil{}:
+      True{}
+    case Con{+a, t}:
+      increasing(t, a, True{})
+
+def xs_check(same: Bool, up: Bool, rev: List<&2, F32>, +n: U32, +m: U32) -> XsCheck:
+  match same up:
+    case False{} _:
+      XsBad{"the x coordinates hold " ++ U32.show(m) ++ " values and the series " ++ U32.show(n)}
+    case True{} False{}:
+      XsBad{"the x coordinates must increase"}
+    case True{} True{}:
+      XsOk{rev}
+
+# The x coordinates `p` of a series of `n` values: ts2vg takes one x per
+# value, each above the one before.
+def xs(p: Parsed, +n: U32) -> XsCheck:
+  match p:
+    case Bad{line}:
+      XsBad{"line " ++ U32.show(line) ++ " of the x coordinates holds no number"}
+    case Values{+rev, +m}:
+      xs_check(U32.is_eq(n, m), increases(rev), rev, n, m)

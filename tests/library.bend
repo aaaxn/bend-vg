@@ -1,7 +1,9 @@
 # What the library reads off a graph, which the tests compare with ts2vg:
-#   library INPUT natural|horizontal undirected|left_to_right|top_to_bottom
+#   library INPUT natural|horizontal undirected|left_to_right|top_to_bottom [MIN MAX]
 # prints a fold's count of the edges and sum of their ends, the degrees,
-# and the adjacency's offsets, targets and weights, one line each.
+# and the adjacency's offsets, targets and weights, one line each. The
+# weights are distances, and MIN and MAX bound them as ts2vg's min_weight
+# and max_weight do.
 import Base
 import ../src/graph.bend as G
 import ../src/vg.bend as VG
@@ -51,12 +53,12 @@ def adjacency_text(+n: U32, a: VG.Adjacency) -> String:
 def outputs(+dir: G.Direction, +n: U32, +es: G.Edges) -> String:
   tally_text(VG.fold(~Tally, ~(t => +s => +d => w => tally(t, s, d)), es, Tally{0, 0})) ++ degrees_text(n, VG.degrees(es, n)) ++ adjacency_text(n, VG.adjacency(dir, es, n))
 
-def report(+g: G.Graph, +dir: G.Direction, +k: G.Weight, p: Series.Parsed) -> IO(Unit):
+def report(+g: G.Graph, +dir: G.Direction, +k: G.Weight, +lo: F32, +hi: F32, p: Series.Parsed) -> IO(Unit):
   match p:
     case Series.Bad{line}:
       IO.die(Unit, 1, "line " ++ U32.show(line) ++ " holds no number")
     case Series.Values{rev, +n}:
-      IO.write(outputs(dir, n, VG.build(VG.Options{g, dir, k, G.neg_inf(), G.inf(), 0}, VG.Series{n, Series.ys(rev, n), G.Index{}})))
+      IO.write(outputs(dir, n, VG.build(VG.Options{g, dir, k, lo, hi, 0}, VG.Series{n, Series.ys(rev, n), G.Index{}})))
 
 def graph_of(horizontal: Bool) -> G.Graph:
   match horizontal:
@@ -74,14 +76,26 @@ def direction_of(ltr: Bool, ttb: Bool) -> G.Direction:
     case False{} False{}:
       G.Undirected{}
 
-def start(args: List<String>) -> IO(Unit):
-  match args:
-    case Con{prog, Con{input, Con{+kind, Con{+dir, Nil{}}}}}:
+def usage() -> String:
+  "usage: library INPUT natural|horizontal undirected|left_to_right|top_to_bottom [MIN MAX]"
+
+def run(input: String, kind: String, +dir: String, lo: Maybe<&2, F32>, hi: Maybe<&2, F32>) -> IO(Unit):
+  match lo hi:
+    case Some{+l} Some{+h}:
       do IO<Unit>:
         text : String <- Series.read_text(input)
-        report(graph_of(String.eq(kind, "horizontal")), direction_of(String.eq(dir, "left_to_right"), String.eq(dir, "top_to_bottom")), G.Distance{}, Series.parse(text))
+        report(graph_of(String.eq(kind, "horizontal")), direction_of(String.eq(dir, "left_to_right"), String.eq(dir, "top_to_bottom")), G.Distance{}, l, h, Series.parse(text))
+    case _ _:
+      IO.die(Unit, 2, "MIN and MAX are numbers\n" ++ usage())
+
+def start(args: List<String>) -> IO(Unit):
+  match args:
+    case Con{prog, Con{input, Con{kind, Con{dir, Nil{}}}}}:
+      run(input, kind, dir, Some{G.neg_inf()}, Some{G.inf()})
+    case Con{prog, Con{input, Con{kind, Con{dir, Con{lo, Con{hi, Nil{}}}}}}}:
+      run(input, kind, dir, F32.read(lo), F32.read(hi))
     case _:
-      IO.die(Unit, 2, "usage: library INPUT natural|horizontal undirected|left_to_right|top_to_bottom")
+      IO.die(Unit, 2, usage())
 
 def main() -> IO(Unit):
   do IO<Unit>:

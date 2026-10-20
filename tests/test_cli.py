@@ -34,6 +34,8 @@ def _series():
         "noise_nans": np.where(np.arange(300) % 7 == 3, np.nan, np.random.default_rng(1).standard_normal(300)),
         "nan_runs": np.where(np.arange(400) // 50 % 3 == 1, np.nan, np.random.default_rng(2).standard_normal(400)),
         "all_nans": np.full(200, np.nan),
+        "infs": [1.0, np.inf, 2.0, -np.inf, 0.5, 3.0, np.inf, -1.0, -np.inf, 2.5, 1.5, np.inf],
+        "noise_infs": np.where(np.arange(300) % 11 == 5, np.inf, np.where(np.arange(300) % 13 == 7, -np.inf, np.random.default_rng(3).standard_normal(300))),
         "white_noise": np.random.default_rng(0).standard_normal(1000),
         "brownian": np.cumsum(np.random.default_rng(0).standard_normal(1000)),
         "linear_small": [9999 + k / 10 for k in range(11)],
@@ -65,6 +67,7 @@ def builds(tmp_path_factory, worker_id):
             for source, target in [("bend_vg.bend", "bend_vg"), ("tests/one_thread.bend", "one_thread"), ("tests/library.bend", "library")]:
                 for suffix in ["", ".js"]:
                     subprocess.run([BEND, source, "-o", str(out / (target + suffix))], cwd=ROOT, env=env, check=True)
+            subprocess.run([BEND, "bench/bench.bend", "-o", str(out / "bench")], cwd=ROOT, env=env, check=True)
             (out / "done").touch()
     return out
 
@@ -348,19 +351,69 @@ def rows(edges, n, directed):
 def test_library_outputs_match_ts2vg(library, inputs, series, kind, directed):
     ts = SERIES[series]
     n = len(ts)
-    g = GRAPHS[kind](directed=directed).build(ts.astype(np.float64))
+    g = GRAPHS[kind](directed=directed, weighted="distance").build(ts.astype(np.float64))
     want_rows = rows(reference_edges(series, kind, directed, "distance"), n, directed)
     for lane in ["native", "js"]:
         lines = dict(line.split(" ", 1) if " " in line else (line, "") for line in run(library[lane], inputs[series], kind, directed or "undirected").splitlines())
         m, ends = map(int, lines["f"].split())
         assert m == len(g.edges), lane
-        assert ends == sum(s + t for s, t in g.edges) % 2**32, lane
+        assert ends == sum(e[0] + e[1] for e in g.edges) % 2**32, lane
         assert [int(d) for d in lines["d"].split()] == list(g.degrees), lane
         offsets = [int(o) for o in lines["o"].split()]
         targets = [int(t) for t in lines["t"].split()]
         weights = [bits(w) for w in lines["w"].split()]
         got_rows = [list(zip(targets[a:b], weights[a:b])) for a, b in zip(offsets, offsets[1:])]
         assert got_rows == want_rows, lane
+
+
+# Bounds on the weights: ts2vg keeps an edge whose weight lies strictly
+# between min_weight and max_weight. Each bound here is the weight of an
+# edge, which the bounds must drop.
+
+BOUND_SERIES = ["sample_2", "white_noise", "small_ints", "sine_noise", "noise_infs"]
+
+
+def f32_text(v):
+    return np.format_float_positional(np.float32(v), unique=True)
+
+
+@pytest.mark.parametrize(("series", "kind", "directed"), [(s, k, d) for s in BOUND_SERIES for k in GRAPHS for d in DIRECTIONS])
+def test_library_weight_bounds_match_reference(library, inputs, series, kind, directed):
+    ts = SERIES[series]
+    ws = sorted({w for _, _, w in reference_edges(series, kind, directed, "distance") if np.isfinite(w)})
+    lo, hi = ws[len(ws) // 4], ws[3 * len(ws) // 4]
+    edges = reference.build(ts, kind, directed, "distance", min_weight=lo, max_weight=hi)
+    assert not any(w == lo or w == hi for _, _, w in edges)
+    want_rows = rows(edges, len(ts), directed)
+    for lane in ["native", "js"]:
+        lines = dict(line.split(" ", 1) if " " in line else (line, "") for line in run(library[lane], inputs[series], kind, directed or "undirected", f32_text(lo), f32_text(hi)).splitlines())
+        assert int(lines["f"].split()[0]) == len(edges), lane
+        offsets = [int(o) for o in lines["o"].split()]
+        targets = [int(t) for t in lines["t"].split()]
+        weights = [bits(w) for w in lines["w"].split()]
+        assert [list(zip(targets[a:b], weights[a:b])) for a, b in zip(offsets, offsets[1:])] == want_rows, lane
+
+
+# The benchmark's driver measures only the graph it was asked for.
+
+
+@pytest.mark.parametrize(
+    ("args", "code", "error"),
+    [
+        (["linear"], 2, "natural or horizontal"),
+        (["natural", "two"], 2, "LIMIT is a whole number"),
+        (["natural", "0", "1\n2\nx\n4\n"], 1, "line 3 of the x coordinates"),
+        (["natural", "0", "1\n2\n3\n"], 1, "hold 3 values and the series 4"),
+        (["horizontal", "1", "1\n3\n2\n4\n"], 1, "must increase"),
+    ],
+)
+def test_bench_rejects_bad_arguments(builds, inputs, tmp_path, args, code, error):
+    if len(args) == 3:
+        (tmp_path / "xs.txt").write_text(args[2])
+        args = [*args[:2], str(tmp_path / "xs.txt")]
+    done = subprocess.run([str(builds / "bench"), str(inputs["sample"]), *args], capture_output=True, text=True)
+    assert done.returncode == code
+    assert error in done.stderr
 
 
 # Long series: the JS lane's stack overflows on a recursion about as deep as

@@ -167,11 +167,13 @@ in the graph.
   line refuses a series of more than 16,777,216 values. The library's
   `build` does not check.
 - F32 x carries 24 bits too: Unix times in seconds, about 1.7e9, round to
-  multiples of 128. Subtract the first x before writing the file: slopes
-  and distances depend only on differences of x.
+  multiples of 128. Subtract the first x before writing the file.
 - Rounding a float64 series to F32 can tie values that differ in float64.
   For a series with a large offset, such as `1000 + 0.01 * noise`, subtract
-  the offset before writing the file: neither graph changes under a shift.
+  the offset before writing the file.
+- Visibility depends only on differences of x and of values, but ts2vg's
+  tolerance grows with their size. So where three values are nearly
+  collinear, a shift can add or drop an edge, in ts2vg as in bend-vg.
 - F32 overflows above about 3.4e38. A weight that overflows, such as the
   distance between values near 1e20, is infinite, and the default upper
   bound on weights then drops its edge, which ts2vg keeps.

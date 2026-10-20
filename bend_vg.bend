@@ -1,4 +1,6 @@
-# bend-vg's command line, which takes ts2vg's options with the input first:
+# ts2vg's visibility graphs of time series, in Bend2, on every CPU thread.
+#
+# bend-vg's command line takes ts2vg's options with the input first:
 #   bend_vg INPUT [-o OUTPUT] [-x XS] [-t TYPE] [-d DIRECTED] [-w WEIGHTED] [-p LIMIT] [-m MODE]
 # where XS, which ts2vg's command line lacks, holds the x of each value.
 import Base
@@ -200,29 +202,11 @@ def report.sized(too_long: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +
     case False{}:
       report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, ByIndex{}, n)
 
-# Whether each value of `rest`, last first, is below `a`, as ts2vg checks
-# that x increases.
-def increasing(rest: List<&2, F32>, +a: F32, ok: Bool) -> Bool:
-  match rest:
-    case Nil{}:
-      ok
-    case Con{+b, t}:
-      increasing(t, b, ok && Bool.not(F32.is_le(F32.sub(a, b), 0.0)))
-
-def increases(xrev: List<&2, F32>) -> Bool:
-  match xrev:
-    case Nil{}:
-      True{}
-    case Con{+a, t}:
-      increasing(t, a, True{})
-
-def report.xs(same: Bool, up: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode, rev: List<&2, F32>, xrev: List<&2, F32>, +n: U32, +m: U32) -> Outcome:
-  match same up:
-    case False{} _:
-      Err{"the x coordinates hold " ++ U32.show(m) ++ " values and the series " ++ U32.show(n)}
-    case True{} False{}:
-      Err{"the x coordinates must increase"}
-    case True{} True{}:
+def report.xs(x: Series.XsCheck, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
+  match x:
+    case Series.XsBad{msg}:
+      Err{msg}
+    case Series.XsOk{xrev}:
       report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, Given{xrev}, n)
 
 # The x coordinates of the -x file, if one was given.
@@ -236,10 +220,8 @@ def report(p: Series.Parsed, x: XsIn, +g: G.Graph, +dir: G.Direction, +k: G.Weig
       Err{"line " ++ U32.show(line) ++ " holds no number"}
     case Series.Values{rev, +n} NoXs{}:
       report.sized(U32.is_gt(n, 16777216), g, dir, k, limit, mode, rev, n)
-    case Series.Values{rev, n} XsRead{Series.Bad{line}}:
-      Err{"line " ++ U32.show(line) ++ " of the x coordinates holds no number"}
-    case Series.Values{rev, +n} XsRead{Series.Values{+xrev, +m}}:
-      report.xs(U32.is_eq(n, m), increases(xrev), g, dir, k, limit, mode, rev, xrev, n, m)
+    case Series.Values{rev, +n} XsRead{xp}:
+      report.xs(Series.xs(xp, n), g, dir, k, limit, mode, rev, n)
 
 # Files
 
