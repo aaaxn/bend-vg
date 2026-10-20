@@ -46,7 +46,7 @@ type Edges is Data:
   ECon{src: U32, dst: U32, w: F32, next: Edges}
   EJoin{a: Edges, b: Edges}
 
-# The options of ts2vg's graph classes: the graph, how its edges point,
+# The options of ts2vg's graph classes: the visibility, how its edges point,
 # their weight, the weights to keep (above `min_weight` and below
 # `max_weight`; neg_inf() and inf() keep every weight), and how many points
 # an edge may cross.
@@ -842,8 +842,8 @@ def chosen(is_visibility: Bool, +g: Visibility, +dir: Direction, +k: Weight, +lo
     case False{}:
       penetrable(g, dir, k, lo, hi, limit, ys, xs, n)
 
-# The edges of the graph of `s` with the options `o`, as ts2vg's `build`
-# makes them. The natural and horizontal graphs run on one thread, and the
+# The graph of `s` with the options `o`, with the edges ts2vg's `build`
+# makes. The natural and horizontal graphs run on one thread, and the
 # limited penetrable ones split their sweeps among every thread.
 def build(o: Options, s: Series) -> Graph:
   Options{g, +dir, k, lo, hi, +limit} = o

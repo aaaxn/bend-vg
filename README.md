@@ -80,7 +80,8 @@ of the series `s` with ts2vg's options `o`:
 - `VG.Graph{n, directed, edges}` is the graph. `VG.fold(~A, ~f, g, acc)`
   folds the template `f(acc, src, dst, w)` over its edges, `VG.degrees(g)`
   gives ts2vg's degrees as an array, and `VG.adjacency(g)` gives its
-  compressed rows, each in increasing order.
+  compressed rows, each in increasing order. A def that reads a graph more
+  than once takes it as `+g`.
 
 This program imports the library from BendHub and prints 4, the number of
 edges:

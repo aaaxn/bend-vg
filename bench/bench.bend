@@ -53,7 +53,7 @@ def add_degrees(t: Tally, +d: U32) -> Tally:
 type Timed is Type:
   Timed{g: VG.Graph, t: Tally, now: Nat}
 
-# The time once the tally `t` of the edges `es` is computed.
+# The time once the tally `t` of the edges of `g` is computed.
 def stamp_edges(g: VG.Graph, t: Tally) -> IO(Timed):
   match t:
     case Tally{m, sum}:
