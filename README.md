@@ -1,4 +1,4 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/art/banner-dark.gif"><img src="docs/art/banner.gif" alt="bend-vg: visibility graphs of time series, written in Bend. A girl in a koi hat rides a whale shark over a time series, and its visibility edges light up behind her." width="100%"></picture></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/art/banner-dark.gif"><img src="docs/art/banner.gif" alt="bend-visgraph: visibility graphs of time series, written in Bend. A girl in a koi hat rides a whale shark over a time series, and its visibility edges light up behind her." width="100%"></picture></p>
 
 bend-vg builds visibility graphs of time series in
 [Bend2](https://github.com/bendlang/bend). It ports the graphs of
