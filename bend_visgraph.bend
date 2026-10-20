@@ -1,7 +1,8 @@
 # ts2vg's visibility graphs of time series, in Bend2, on every CPU thread.
+# Docs, tests and benchmark: https://github.com/aaaxn/bend-visgraph
 #
 # bend-visgraph's command line takes ts2vg's options with the input first:
-#   bend_vg INPUT [-o OUTPUT] [-x XS] [-t TYPE] [-d DIRECTED] [-w WEIGHTED] [-p LIMIT] [-m MODE]
+#   bend_visgraph INPUT [-o OUTPUT] [-x XS] [-t TYPE] [-d DIRECTED] [-w WEIGHTED] [-p LIMIT] [-m MODE]
 # where XS, which ts2vg's command line lacks, holds the x of each value.
 import Base
 import ./src/graph.bend as G
@@ -37,7 +38,7 @@ type Outcome is Data:
   Err{msg: String}
 
 def usage() -> String:
-  "usage: bend_vg INPUT [-o OUTPUT] [-x XS] [-t natural|horizontal] [-d left_to_right|top_to_bottom] [-w WEIGHT] [-p LIMIT] [-m el|ds|dd|dc]"
+  "usage: bend_visgraph INPUT [-o OUTPUT] [-x XS] [-t natural|horizontal] [-d left_to_right|top_to_bottom] [-w WEIGHT] [-p LIMIT] [-m el|ds|dd|dc]"
 
 # Option names
 
@@ -198,7 +199,7 @@ def report.built(weighted_degrees: Bool, +g: G.Graph, +dir: G.Direction, +k: G.W
 def report.sized(too_long: Bool, +g: G.Graph, +dir: G.Direction, +k: G.Weight, +limit: U32, +mode: Mode, rev: List<&2, F32>, +n: U32) -> Outcome:
   match too_long:
     case True{}:
-      Err{"bend_vg takes at most 16777216 values, since x is the index as an F32"}
+      Err{"bend_visgraph takes at most 16777216 values, since x is the index as an F32"}
     case False{}:
       report.built(only_degrees(mode) && Report.is_weighted(k), g, dir, k, limit, mode, rev, ByIndex{}, n)
 

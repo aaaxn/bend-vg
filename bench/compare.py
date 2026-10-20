@@ -71,7 +71,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="compare-", dir=ROOT / "build") as tmp:
         work = Path(tmp)
         env = {**os.environ, "BEND_NO_TELEMETRY": "1"}
-        subprocess.run([BEND, "bend_vg.bend", "-o", str(work / "bend_vg")], cwd=ROOT, env=env, check=True)
+        subprocess.run([BEND, "bend_visgraph.bend", "-o", str(work / "bend_visgraph")], cwd=ROOT, env=env, check=True)
 
         print("| graph | series | n | ts2vg edges | bend-visgraph edges | only in ts2vg (in the graph) | only in bend-visgraph (in the graph) |")
         print("|" + " --- |" * 7)
@@ -82,7 +82,7 @@ def main():
                     xs = irregular_xs(n) if args.xs else np.arange(n, dtype=np.float32)
                     path = work / f"{name}_{n}.txt"
                     write(path, ts)
-                    cli = [str(work / "bend_vg"), str(path), "-t", kind, "-p", str(args.limit)]
+                    cli = [str(work / "bend_visgraph"), str(path), "-t", kind, "-p", str(args.limit)]
                     if args.xs:
                         write(work / f"xs_{n}.txt", xs)
                         cli += ["-x", str(work / f"xs_{n}.txt")]

@@ -43,8 +43,8 @@ bend-visgraph is tested on Linux x86-64.
 ## Use it
 
 ```sh
-bend bend_vg.bend -o bend_vg
-./bend_vg series.txt -t natural -w distance
+bend bend_visgraph.bend -o bend_visgraph
+./bend_visgraph series.txt -t natural -w distance
 ```
 
 The input is a text file with one value per line. The options are those of
@@ -64,7 +64,7 @@ of ts2vg's `build`:
 ## Use it from Bend
 
 `src/vg.bend` is the library, and BendHub serves it as
-`bend-visgraph@1.0.0.0/src/vg.bend`. `VG.build(o, s)` returns the edges of
+`bend-visgraph@1.0.1.0/src/vg.bend`. `VG.build(o, s)` returns the edges of
 the graph of the series `s` with ts2vg's options `o`:
 
 - `VG.Options{graph, directed, weighted, min_weight, max_weight,
@@ -83,8 +83,8 @@ library from BendHub and prints 4, the number of edges:
 
 ```python
 import Base
-import bend-visgraph@1.0.0.0/src/graph.bend as G
-import bend-visgraph@1.0.0.0/src/vg.bend as VG
+import bend-visgraph@1.0.1.0/src/graph.bend as G
+import bend-visgraph@1.0.1.0/src/vg.bend as VG
 
 def main() -> IO(Unit):
   do IO<Unit>:
@@ -211,12 +211,12 @@ naming the 13 defs of `src/parallel.bend` that rely on Base's `@unsafe`
 `Array.fork`: the tasks that share a forked array read it, write cells no
 other task writes, or add to cells atomically.
 
-The tests build `bend_vg`, `tests/one_thread.bend` and `tests/library.bend`
-natively and as JavaScript, and compare them, bit for bit, with
-`tests/reference.py`, a float32 copy of ts2vg's kernels. They also compare
-the native build with ts2vg itself: the unweighted edges must be equal,
-and the weights within 1e-6 relative. On series of 100,000 values, they
-compare the JavaScript build with the native one.
+The tests build `bend_visgraph`, `tests/one_thread.bend` and
+`tests/library.bend` natively and as JavaScript, and compare them, bit for
+bit, with `tests/reference.py`, a float32 copy of ts2vg's kernels. They also
+compare the native build with ts2vg itself: the unweighted edges must be
+equal, and the weights within 1e-6 relative. On series of 100,000 values,
+they compare the JavaScript build with the native one.
 
 ## License
 

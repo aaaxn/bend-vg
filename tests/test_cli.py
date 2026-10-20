@@ -1,4 +1,4 @@
-"""bend_vg against the float32 reference (bit for bit) and against ts2vg."""
+"""bend_visgraph against the float32 reference (bit for bit) and against ts2vg."""
 
 import fcntl
 import functools
@@ -64,7 +64,7 @@ def builds(tmp_path_factory, worker_id):
     with open(out / "lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not (out / "done").exists():
-            for source, target in [("bend_vg.bend", "bend_vg"), ("tests/one_thread.bend", "one_thread"), ("tests/library.bend", "library")]:
+            for source, target in [("bend_visgraph.bend", "bend_visgraph"), ("tests/one_thread.bend", "one_thread"), ("tests/library.bend", "library")]:
                 for suffix in ["", ".js"]:
                     subprocess.run([BEND, source, "-o", str(out / (target + suffix))], cwd=ROOT, env=env, check=True)
             subprocess.run([BEND, "bench/bench.bend", "-o", str(out / "bench")], cwd=ROOT, env=env, check=True)
@@ -74,7 +74,7 @@ def builds(tmp_path_factory, worker_id):
 
 @pytest.fixture(scope="session")
 def lanes(builds):
-    return {"native": [str(builds / "bend_vg")], "js": [BUN, str(builds / "bend_vg.js")]}
+    return {"native": [str(builds / "bend_visgraph")], "js": [BUN, str(builds / "bend_visgraph.js")]}
 
 
 @pytest.fixture(scope="session")
